@@ -99,15 +99,12 @@ Faqat `down -v` volume'ni o'chiradi.
 
 ## Deploy
 
-Hozir **Hetzner Ubuntu serverida** Docker orqali 24/7 ishlaydi. Qo'lda yangilash:
+Hozir **Hetzner Ubuntu serverida** Docker orqali 24/7 ishlaydi va **CI/CD** sozlangan:
+`main` branch'ga `git push` qilsangiz, GitHub Actions avtomatik serverga deploy qiladi.
 
 ```bash
-# Mac'dan kodni yuborish
-rsync -az --delete -e 'ssh -p 5522' \
-  --exclude '.venv' --exclude '__pycache__' --exclude 'logs' --exclude 'data' \
-  ./ ikpydev@SERVER_IP:/home/ikpydev/bot/
-# Serverda qayta qurish
-ssh -p 5522 ikpydev@SERVER_IP 'cd ~/bot && docker compose up -d --build'
+git add -A && git commit -m "..." && git push   # → avtomatik deploy
 ```
 
-CI/CD (GitHub Actions) sozlansa, bu jarayon `git push` bilan avtomatlashtiriladi.
+To'liq deploy qo'llanmasi (yangi serverga noldan ko'chirish, CI/CD sozlash, troubleshooting):
+👉 **[DEPLOY.md](DEPLOY.md)**
