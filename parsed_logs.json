@@ -1,0 +1,171 @@
+[
+  {
+    "timestamp": "2026-06-30T11:26:40.398516+00:00",
+    "level": "INFO",
+    "logger": "bot.handlers.message",
+    "event": "Resolved owner for connection",
+    "details": {
+      "connection_id": "WLA-RxuHEEqaEwAAzag-bWF23g8",
+      "owner_user_id": 6153373502,
+      "owner_chat_id": 6153373502
+    }
+  },
+  {
+    "timestamp": "2026-06-30T11:26:40.399028+00:00",
+    "level": "INFO",
+    "logger": "bot.handlers.message",
+    "event": "Outgoing business message (Normal photo reply)",
+    "message_details": {
+      "message_id": 183418,
+      "direction": "outgoing",
+      "connection_id": "WLA-RxuHEEqaEwAAzag-bWF23g8",
+      "sender": {
+        "user_id": 6153373502,
+        "name": "Ikrombek",
+        "username": "@ikpydev_admin"
+      },
+      "chat": {
+        "chat_id": 8279423946,
+        "chat_name": "Ali X"
+      },
+      "content": {
+        "type": "text",
+        "text": "bu odiy rasm"
+      },
+      "reply_to": {
+        "message_id": 182279,
+        "type": "photo",
+        "is_protected": false,
+        "photo_sizes": [
+          {
+            "width": 40,
+            "height": 90,
+            "file_size": 904,
+            "file_id": "AgACAgIAAxkBAAECyAdqQ6fwhleDKECdSwd3HCVPAVgSkQACjxlrG_ZECEq-c3dqRtJc1QEAAwIAA3MAAzwE",
+            "file_unique_id": "AQADjxlrG_ZECEp4"
+          },
+          {
+            "width": 144,
+            "height": 320,
+            "file_size": 9488,
+            "file_id": "AgACAgIAAxkBAAECyAdqQ6fwhleDKECdSwd3HCVPAVgSkQACjxlrG_ZECEq-c3dqRtJc1QEAAwIAA20AAzwE",
+            "file_unique_id": "AQADjxlrG_ZECEpy"
+          },
+          {
+            "width": 360,
+            "height": 800,
+            "file_size": 32196,
+            "file_id": "AgACAgIAAxkBAAECyAdqQ6fwhleDKECdSwd3HCVPAVgSkQACjxlrG_ZECEq-c3dqRtJc1QEAAwIAA3gAAzwE",
+            "file_unique_id": "AQADjxlrG_ZECEp9"
+          },
+          {
+            "width": 576,
+            "height": 1280,
+            "file_size": 53538,
+            "file_id": "AgACAgIAAxkBAAECyAdqQ6fwhleDKECdSwd3HCVPAVgSkQACjxlrG_ZECEq-c3dqRtJc1QEAAwIAA3kAAzwE",
+            "file_unique_id": "AQADjxlrG_ZECEp-"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "timestamp": "2026-06-30T11:26:40.690430+00:00",
+    "level": "INFO",
+    "logger": "bot.handlers.message",
+    "event": "Sent copy to owner",
+    "details": {
+      "message_id": 183418,
+      "owner_chat_id": 6153373502
+    }
+  },
+  {
+    "timestamp": "2026-06-30T11:26:41.040547+00:00",
+    "level": "INFO",
+    "logger": "bot.handlers.message",
+    "event": "Sent copy to channel",
+    "details": {
+      "message_id": 183418,
+      "channel_id": -1003702285287
+    }
+  },
+  {
+    "timestamp": "2026-06-30T11:26:51.452617+00:00",
+    "level": "INFO",
+    "logger": "bot.handlers.message",
+    "event": "Outgoing business message (Protected/One-time photo reply)",
+    "message_details": {
+      "message_id": 183421,
+      "direction": "outgoing",
+      "connection_id": "WLA-RxuHEEqaEwAAzag-bWF23g8",
+      "sender": {
+        "user_id": 6153373502,
+        "name": "Ikrombek",
+        "username": "@ikpydev_admin"
+      },
+      "chat": {
+        "chat_id": 8279423946,
+        "chat_name": "Ali X"
+      },
+      "content": {
+        "type": "text",
+        "text": "bu ochirib ketuvchi rasm"
+      },
+      "reply_to": {
+        "message_id": 183024,
+        "type": "photo",
+        "is_protected": true,
+        "photo_sizes": [
+          {
+            "width": 90,
+            "height": 90,
+            "file_size": 1685,
+            "file_id": "FgACAgIAAxkBAAECyvBqQllXkr9dOdXQK95yzoVWq7H7qQAC_x1rG7qaEUqJ2evUYLhghgEAAxYAA3MAAzwE",
+            "file_unique_id": "AQAD_x1rG7qaEUp4"
+          },
+          {
+            "width": 320,
+            "height": 320,
+            "file_size": 22064,
+            "file_id": "FgACAgIAAxkBAAECyvBqQllXkr9dOdXQK95yzoVWq7H7qQAC_x1rG7qaEUqJ2evUYLhghgEAAxYAA20AAzwE",
+            "file_unique_id": "AQAD_x1rG7qaEUpy"
+          },
+          {
+            "width": 800,
+            "height": 800,
+            "file_size": 82252,
+            "file_id": "FgACAgIAAxkBAAECyvBqQllXkr9dOdXQK95yzoVWq7H7qQAC_x1rG7qaEUqJ2evUYLhghgEAAxYAA3gAAzwE",
+            "file_unique_id": "AQAD_x1rG7qaEUp9"
+          },
+          {
+            "width": 1254,
+            "height": 1254,
+            "file_size": 128850,
+            "file_id": "FgACAgIAAxkBAAECyvBqQllXkr9dOdXQK95yzoVWq7H7qQAC_x1rG7qaEUqJ2evUYLhghgEAAxYAA3kAAzwE",
+            "file_unique_id": "AQAD_x1rG7qaEUp-"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "timestamp": "2026-06-30T11:26:52.746749+00:00",
+    "level": "INFO",
+    "logger": "bot.handlers.message",
+    "event": "Sent copy to owner",
+    "details": {
+      "message_id": 183421,
+      "owner_chat_id": 6153373502
+    }
+  },
+  {
+    "timestamp": "2026-06-30T11:26:53.646561+00:00",
+    "level": "INFO",
+    "logger": "bot.handlers.message",
+    "event": "Sent copy to channel",
+    "details": {
+      "message_id": 183421,
+      "channel_id": -1003702285287
+    }
+  }
+]

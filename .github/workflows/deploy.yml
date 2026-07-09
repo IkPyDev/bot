@@ -1,0 +1,26 @@
+name: Deploy bot
+
+# main branch'ga har push bo'lganda ishlaydi
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}   # qo'lda ham ishga tushirish mumkin (Actions sahifasidan)
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Serverga SSH orqali deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            cd ~/bot
+            git pull origin main
+            docker compose up -d --build
+            docker image prune -f
+            echo "✅ Deploy tugadi"

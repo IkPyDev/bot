@@ -1,0 +1,26 @@
+# Environment
+.env
+.venv/
+venv/
+env/
+
+# SQLite database
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Logs
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store

@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-botuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-botpass}
+      POSTGRES_DB: ${POSTGRES_DB:-botdb}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Baza tayyor bo'lganini tekshiradi — bot faqat baza tayyor bo'lgach ishga tushadi
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-botuser} -d ${POSTGRES_DB:-botdb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  bot:
+    build: .
+    restart: always
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Log fayllari host'da ko'rinib tursin
+      - ./logs:/app/logs
+
+volumes:
+  pgdata:
