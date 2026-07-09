@@ -806,7 +806,43 @@ async def _send_copy_to_owner(
     if not file_id:
         return
 
-    # Qum soat
+    caption = bot_tag
+    if len(caption) > 1024:
+        caption = caption[:1021] + "..."
+
+    async def _send(source) -> bool:
+        """source — file_id (str) yoki BufferedInputFile. Media turiga qarab yuboradi."""
+        if content_type == "photo":
+            await bot.send_photo(chat_id=user_chat_id, photo=source, caption=caption)
+        elif content_type == "video":
+            await bot.send_video(chat_id=user_chat_id, video=source, caption=caption)
+        elif content_type == "voice":
+            await bot.send_voice(chat_id=user_chat_id, voice=source, caption=caption)
+        elif content_type == "video_note":
+            await bot.send_video_note(chat_id=user_chat_id, video_note=source)
+            if bot_tag:
+                await bot.send_message(chat_id=user_chat_id, text=bot_tag)
+        elif content_type == "audio":
+            await bot.send_audio(chat_id=user_chat_id, audio=source, caption=caption)
+        elif content_type == "document":
+            await bot.send_document(chat_id=user_chat_id, document=source, caption=caption)
+        elif content_type == "sticker":
+            await bot.send_sticker(chat_id=user_chat_id, sticker=source)
+            if bot_tag:
+                await bot.send_message(chat_id=user_chat_id, text=bot_tag)
+        else:
+            return False
+        return True
+
+    # 1-usul: file_id ni to'g'ridan yuborish (kanal singari). Yuklab olish yo'q —
+    # shuning uchun hajm cheklovi (20 MB) yo'q, katta videolar ham o'tadi.
+    try:
+        if await _send(file_id):
+            return
+    except Exception as e:
+        logger.info("Direct file_id send failed, downloadga o'tamiz: %s", e)
+
+    # 2-usul (fallback): yuklab olib qayta yuborish. Faqat <20 MB fayllarda ishlaydi.
     wait_msg = None
     try:
         wait_msg = await bot.send_message(chat_id=user_chat_id, text="⏳")
@@ -814,41 +850,11 @@ async def _send_copy_to_owner(
         pass
 
     data = await _download_file(bot, file_id)
-    if not data:
-        if wait_msg:
-            try:
-                await wait_msg.delete()
-            except Exception:
-                pass
-        return
-
-    input_file = BufferedInputFile(data, filename=filename)
-    caption = bot_tag
-    if len(caption) > 1024:
-        caption = caption[:1021] + "..."
-
-    sent_media = None
-    try:
-        if content_type == "photo":
-            sent_media = await bot.send_photo(chat_id=user_chat_id, photo=input_file, caption=caption)
-        elif content_type == "video":
-            sent_media = await bot.send_video(chat_id=user_chat_id, video=input_file, caption=caption)
-        elif content_type == "voice":
-            sent_media = await bot.send_voice(chat_id=user_chat_id, voice=input_file, caption=caption)
-        elif content_type == "video_note":
-            sent_media = await bot.send_video_note(chat_id=user_chat_id, video_note=input_file)
-            if bot_tag:
-                await bot.send_message(chat_id=user_chat_id, text=bot_tag)
-        elif content_type == "audio":
-            sent_media = await bot.send_audio(chat_id=user_chat_id, audio=input_file, caption=caption)
-        elif content_type == "document":
-            sent_media = await bot.send_document(chat_id=user_chat_id, document=input_file, caption=caption)
-        elif content_type == "sticker":
-            sent_media = await bot.send_sticker(chat_id=user_chat_id, sticker=input_file)
-            if bot_tag:
-                await bot.send_message(chat_id=user_chat_id, text=bot_tag)
-    except Exception as e:
-        logger.warning("Failed to send protected media to owner: %s", e)
+    if data:
+        try:
+            await _send(BufferedInputFile(data, filename=filename))
+        except Exception as e:
+            logger.warning("Failed to send protected media to owner: %s", e)
 
     # Qum soatni o'chirish
     if wait_msg:
