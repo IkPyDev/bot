@@ -4,23 +4,29 @@ name: Deploy bot
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}   # qo'lda ham ishga tushirish mumkin (Actions sahifasidan)
+  workflow_dispatch: {}   # Actions sahifasidan qo'lda ham ishga tushirish mumkin
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Serverga SSH orqali deploy
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Kodni olish
+        uses: actions/checkout@v4
+
+      - name: Serverga rsync + docker compose
+        uses: easingthemes/ssh-deploy@v5.1.0
         with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            set -e
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.SSH_HOST }}
+          REMOTE_PORT: ${{ secrets.SSH_PORT }}
+          REMOTE_USER: ${{ secrets.SSH_USER }}
+          SOURCE: "./"
+          TARGET: "/home/ikpydev/bot/"
+          # .env, loglar, data serverda saqlanadi — o'chirilmaydi/o'zgartirilmaydi
+          EXCLUDE: "/.git/, /.github/, /.venv/, /logs/, /data/, /.env, /__pycache__/"
+          ARGS: "-rlgoDzvc --delete"
+          SCRIPT_AFTER: |
             cd ~/bot
-            git pull origin main
             docker compose up -d --build
             docker image prune -f
             echo "✅ Deploy tugadi"
