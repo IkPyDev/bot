@@ -59,15 +59,20 @@ START_TEXT = (
 # Caption — rasm tagidagi matn (HTML formatida: bold / italic / blockquote / code).
 # Bot default parse_mode="HTML" — teglar avtomatik render bo'ladi.
 START_CAPTION = (
-    "Xush kelibsiz!\n"
-    "<b>🕵️‍♂️ Bu bot sizga yozishmalarda yordam berish uchun yaratilgan.</b>\n\n"
-    "<i>Bot imkoniyatlari:\n"
-    "• Suhbatdoshingiz xabarni tahrirlasa yoki o'chirsa, darhol bildirishnoma yuboradi 🔔\n"
-    "• Taymerli fayllarni yuklab oladi: surat/video/ovozli/doira videolar ⏳</i>\n\n"
-    "<blockquote>❓ Botni ulash:\n"
-    "1. \"🔌 Ulash\" tugmasini bosing\n"
-    "2. \"Chatlarni avtomatlashtirish\"ni tanlang va kiritish maydoniga yozing: "
-    "<code>@sirsaqlauzbot</code></blockquote>"
+    "<b>🕵️‍♂️ Xush kelibsiz!</b>\n"
+    "Men sizning yozishmalaringizni kuzatib turaman.\n\n"
+    "<b>📌 Nima qila olaman:</b>\n\n"
+    "🔔 Suhbatdoshingiz xabarini <b>tahrirlasa</b> — eski matnini ko'rsataman\n"
+    "🗑 Xabarni <b>o'chirsa</b> — nima yozganini saqlab qolaman\n"
+    "⏳ <b>Bir marta ko'riladigan</b> surat, video, ovozli xabar va yumoloq videolarni yuklab olaman\n\n"
+    "➖➖➖➖➖➖➖➖➖\n\n"
+    "<b>⚡️ Ishga tushirish — 3 ta oddiy qadam:</b>\n\n"
+    "1️⃣ Pastdagi <b>«🔌 Ulash»</b> tugmasini bosing 👇\n\n"
+    "2️⃣ Ochilgan oynadan <b>«Chatlarni avtomatlashtirish»</b> bo'limini tanlang 🤖\n\n"
+    "3️⃣ Bo'sh maydonga bot nomini yozing 👇\n"
+    "<code>@sirsaqlauzbot</code>\n"
+    "Pastda bot chiqadi — <b>bot ustiga bosing</b> ✅\n\n"
+    "➖➖➖➖➖➖➖➖➖\n\n"
 )
 
 # Inline tugmalar — /start xabari tagida chiqadi.
