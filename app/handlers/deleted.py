@@ -88,12 +88,16 @@ async def on_deleted_business_messages(event: BusinessMessagesDeleted, bot: Bot)
         rec = by_id.get(mid)
 
         if rec is None:
-            # Bazada topilmadi — matnsiz minimal bildirishnoma (faqat kanalga)
+            # Bazada topilmadi — lekin owner va chat ma'lumotlari bor, ularni ko'rsatamiz
+            owner_html = owner_link_html(connection_id) or "Noma'lum egasi"
+            chat_html = chat_link_html(event.chat) if event.chat else (html.escape(chat_name) if chat_name else str(chat_id))
             notif = (
                 f"🗑 Xabar o'chirildi\n"
-                f"💬 Chat: {html.escape(chat_name) if chat_name else chat_id}\n"
+                f"👤 Egasi (bot ulangan): {owner_html}\n"
+                f"💬 Chat (kim bilan): {chat_html}\n"
+                f"📌 Xabar ID: {mid}\n"
                 f"🕐 O'chirilgan vaqt: {now_str}\n"
-                f"(xabar matni bazada topilmadi, ID: {mid})"
+                f"⚠️ Xabar matni bazada topilmadi (bot ulanishdan oldin yuborilgan bo'lishi mumkin)"
             )
             enqueue_channel_text(notif)
             continue
