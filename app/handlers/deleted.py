@@ -36,9 +36,9 @@ logger = logging.getLogger("bot.handlers.deleted")
 
 
 def _fmt_dt(value) -> str:
-    """datetime yoki None ni chiroyli satrga aylantiradi."""
+    """datetime yoki None ni chiroyli satrga aylantiradi (UTC+0 belgisi bilan)."""
     if isinstance(value, datetime):
-        return value.strftime("%Y-%m-%d %H:%M:%S")
+        return value.strftime("%Y-%m-%d %H:%M:%S") + " (UTC+0)"
     return str(value) if value else "—"
 
 
@@ -78,7 +78,7 @@ async def on_deleted_business_messages(event: BusinessMessagesDeleted, bot: Bot)
             or ""
         )
 
-    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S") + " (UTC+0)"
 
     # --- O'chirilgan xabarlarning saqlangan matnini bazadan tiklaymiz ---
     records = await db.get_messages_by_ids(connection_id, chat_id, message_ids)

@@ -129,7 +129,7 @@ async def on_edited_business_message(message: Message, bot: Bot) -> None:
             or getattr(message.chat, "first_name", None)
             or ""
         )
-    when = message.date.strftime("%Y-%m-%d %H:%M:%S") if message.date else ""
+    when = (message.date.strftime("%Y-%m-%d %H:%M:%S") + " (UTC+0)") if message.date else ""
 
     # HTML parse_mode ishlatilgani uchun matnlarni escape qilamiz
     old_e = html.escape(old_text)

@@ -982,7 +982,7 @@ def _build_channel_header(
 
     # Vaqt
     if message.date:
-        lines.append(f"🕐 Vaqt: {message.date.strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"🕐 Vaqt: {message.date.strftime('%Y-%m-%d %H:%M:%S')} (UTC+0)")
 
     return "\n".join(lines)
 
