@@ -328,10 +328,10 @@ async def on_howto(callback: CallbackQuery, bot: Bot, lang: str) -> None:
     chat_id = callback.message.chat.id if callback.message else callback.from_user.id
 
     try:
-        if settings.howto_media_channel_id and message_id:
+        if settings.media_channel_id and message_id:
             await bot.copy_message(
                 chat_id=chat_id,
-                from_chat_id=settings.howto_media_channel_id,
+                from_chat_id=settings.media_channel_id,
                 message_id=message_id,
                 caption=caption,
             )

@@ -41,7 +41,6 @@ class Settings:
     media_channel_id: Optional[int]          # Media (rasm/video) turgan "database" kanal ID
     start_media_message_id: Optional[int]    # /start uchun rasm/video xabar ID si
     connect_media_message_id: Optional[int]  # Ulanish (connection) uchun video xabar ID si
-    howto_media_channel_id: Optional[int]    # "Android/iOS ulash" videolari turgan kanal (sozlanmasa MEDIA_CHANNEL_ID)
     android_media_message_id: Optional[int]  # "Android ulash" qo'llanma videosi xabar ID si
     ios_media_message_id: Optional[int]      # "iOS ulash" qo'llanma videosi xabar ID si
 
