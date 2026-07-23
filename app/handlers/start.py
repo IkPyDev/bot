@@ -22,8 +22,8 @@ import html
 import json
 import logging
 from datetime import datetime, timezone
-from aiogram import Bot, Router
-from aiogram.types import Message
+from aiogram import Bot, F, Router
+from aiogram.types import CallbackQuery, Message
 from aiogram.filters import CommandStart
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.types import FSInputFile
@@ -31,6 +31,7 @@ from aiogram.types import FSInputFile
 from app.config import settings
 from app.db import db
 from app.extractors import detect_content_type, extract_text_or_caption, extract_media_fields
+from app.i18n import t
 
 router = Router(name="start")
 logger = logging.getLogger("bot.handlers.start")
@@ -48,42 +49,46 @@ logger = logging.getLogger("bot.handlers.start")
 # MUHIM: bot o'sha kanalning a'zosi/admini bo'lishi shart.
 # Ikkalasi ham bo'sh bo'lsa — bot faqat matn (caption) yuboradi.
 
-# Matn — /start bosganda chiqadigan matn
-START_TEXT = (
-    "Salom! 👋\n\n"
-    "Men sizning business botingizman.\n"
-    "Bu xabarni o'zgartirish uchun:\n"
-    "📁 app/handlers/start.py faylini oching."
-)
+# MATNLAR KO'P TILDA — app/i18n.py da (en/ru/uz/tg/kk/ky).
+# Foydalanuvchining Telegram tili (language_code) bo'yicha til tanlanadi,
+# topilmasa inglizchaga tushadi. Matnni o'zgartirish uchun app/i18n.py ni oching.
 
-# Caption — rasm tagidagi matn (HTML formatida: bold / italic / blockquote / code).
-# Bot default parse_mode="HTML" — teglar avtomatik render bo'ladi.
-START_CAPTION = (
-    "<b>🕵️‍♂️ Xush kelibsiz!</b>\n"
-    "Men sizning yozishmalaringizni kuzatib turaman.\n\n"
-    "<b>📌 Nima qila olaman:</b>\n\n"
-    "🔔 Suhbatdoshingiz xabarini <b>tahrirlasa</b> — eski matnini ko'rsataman\n"
-    "🗑 Xabarni <b>o'chirsa</b> — nima yozganini saqlab qolaman\n"
-    "⏳ <b>Bir marta ko'riladigan</b> surat, video, ovozli xabar va yumoloq videolarni yuklab olaman\n\n"
-    "➖➖➖➖➖➖➖➖➖\n\n"
-    "<b>⚡️ Ishga tushirish — 3 ta oddiy qadam:</b>\n\n"
-    "1️⃣ Pastdagi <b>«🔌 Ulash»</b> tugmasini bosing 👇\n\n"
-    "2️⃣ Ochilgan oynadan <b>«Chatlarni avtomatlashtirish»</b> bo'limini tanlang 🤖\n\n"
-    "3️⃣ Bo'sh maydonga bot nomini yozing 👇\n"
-    "<code>@sirsaqlauzbot</code>\n"
-    "Pastda bot chiqadi — <b>bot ustiga bosing</b> ✅\n\n"
-    "➖➖➖➖➖➖➖➖➖\n\n"
-)
 
-# Inline tugmalar — /start xabari tagida chiqadi.
-# "🔌 Ulash" tugmasi bosilganda Telegram sozlamalarini (business/edit) ochadi.
-START_BUTTONS = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🔌 Ulash", url="tg://settings/edit"),
-        ],
-    ]
-)
+def build_start_buttons(lang: str) -> InlineKeyboardMarkup:
+    """/start xabari tagidagi inline tugmalarni foydalanuvchi tilida quradi.
+
+    "🔌 Ulash" — Telegram sozlamalarini (business/edit) ochadi.
+    "Android ulash" / "iOS ulash" — o'sha telefon uchun qo'llanma videoni yuboradi.
+    """
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=t(lang, "btn_connect"), url="tg://settings/edit"),
+            ],
+            [
+                InlineKeyboardButton(text=t(lang, "btn_android"), callback_data="howto:android"),
+                InlineKeyboardButton(text=t(lang, "btn_ios"), callback_data="howto:ios"),
+            ],
+        ]
+    )
+
+
+# ============================================================
+# QO'LLANMA VIDEOLARI — "Android ulash" / "iOS ulash" tugmalari
+#
+# Har bir tugma "database" kanaldagi O'Z videosini yuboradi.
+# Xabar ID lari .env orqali sozlanadi:
+#   ANDROID_MEDIA_MESSAGE_ID = Android qo'llanma videosi xabar ID si
+#   IOS_MEDIA_MESSAGE_ID     = iOS qo'llanma videosi xabar ID si
+# Sozlanmasa — /start dagi video ishlatiladi (START_MEDIA_MESSAGE_ID).
+# ============================================================
+
+# callback_data -> (i18n caption kaliti, kanaldagi xabar ID si sozlama nomi)
+# Caption foydalanuvchi tilida i18n dan olinadi; ID ni settings dan har chaqiruvda o'qiymiz.
+HOWTO = {
+    "android": ("android_caption", "android_media_message_id"),
+    "ios": ("ios_caption", "ios_media_message_id"),
+}
 
 
 # ============================================================
@@ -91,16 +96,21 @@ START_BUTTONS = InlineKeyboardMarkup(
 # ============================================================
 
 @router.message(CommandStart())
-async def on_start(message: Message, bot: Bot) -> None:
+async def on_start(message: Message, bot: Bot, lang: str) -> None:
     """
     /start komandasi bosilganda ishlaydi.
 
-    Kerakli variantni izohdan chiqaring (# olib tashlang).
-    Bir nechta variantni aralashtirishingiz ham mumkin.
+    `lang` — foydalanuvchi tili (masalan "ru"/"uz"/"en"). Uni LanguageMiddleware
+    aniqlab, aiogram avtomatik shu yerga uzatadi (app/middlewares.py ga qarang).
+    Handler ichida pick_lang chaqirish shart emas.
     """
 
     user = message.from_user
     user_name = user.first_name if user else "Foydalanuvchi"
+
+    # Salomlashish matni + tugmalar — foydalanuvchi tilida (app/i18n.py)
+    start_caption = t(lang, "start_caption")
+    start_buttons = build_start_buttons(lang)
 
     # --- 0. Foydalanuvchini bazaga saqlash (reklama yuborish uchun) ---
     # Har safar kimdir botga kirib /start bosa, uning ma'lumotlarini bazadagi `bot_users` jadvaliga yozib qo'yamiz.
@@ -140,7 +150,7 @@ async def on_start(message: Message, bot: Bot) -> None:
 
     # ============================================================
     # DEFAULT SALOMLASHISH — RASM + FORMATLANGAN CAPTION
-    # Matn/rasmni o'zgartirish uchun yuqoridagi START_CAPTION / START_PHOTO_FILE_ID.
+    # Matnni o'zgartirish uchun app/i18n.py (start_caption kaliti).
     # ============================================================
     sent_msg = None
     sent_type = "text"
@@ -152,16 +162,16 @@ async def on_start(message: Message, bot: Bot) -> None:
                 chat_id=message.chat.id,
                 from_chat_id=settings.media_channel_id,
                 message_id=settings.start_media_message_id,
-                caption=START_CAPTION,
-                reply_markup=START_BUTTONS,
+                caption=start_caption,
+                reply_markup=start_buttons,
             )
             sent_type = "media"
         else:
-            sent_msg = await message.answer(START_CAPTION, reply_markup=START_BUTTONS)
+            sent_msg = await message.answer(start_caption, reply_markup=start_buttons)
     except Exception as e:
         # Kanal/xabar topilmasa yoki bot a'zo bo'lmasa — matn bilan yuboramiz (bot to'xtamaydi)
         logger.warning("Start media yuborilmadi (%s) — matn bilan yuboramiz", e)
-        sent_msg = await message.answer(START_CAPTION, reply_markup=START_BUTTONS)
+        sent_msg = await message.answer(start_caption, reply_markup=start_buttons)
         sent_type = "text"
 
     # --- 0.2 Bot yuborgan javobni ham bazaga yozamiz (AI analizi uchun outgoing) ---
@@ -178,7 +188,7 @@ async def on_start(message: Message, bot: Bot) -> None:
             message_id=sent_msg.message_id if sent_msg else 0,
             direction="outgoing",
             content_type=sent_type,
-            text=START_CAPTION,
+            text=start_caption,
             media_file_id=None,
             media_file_name=None,
             media_mime=None,
@@ -287,6 +297,60 @@ async def on_start(message: Message, bot: Bot) -> None:
 
 
 # ============================================================
+# "Android ulash" / "iOS ulash" TUGMALARI HANDLERI
+#
+# Tugma bosilganda "database" kanaldagi qo'llanma videoni caption bilan
+# nusxalab yuboradi. copy_message file_id'ga bog'liq emas — kanaldan
+# to'g'ridan-to'g'ri o'qiydi, shuning uchun video hech qachon "eskirmaydi".
+# ============================================================
+
+@router.callback_query(F.data.startswith("howto:"))
+async def on_howto(callback: CallbackQuery, bot: Bot, lang: str) -> None:
+    """«🤖 Android ulash» yoki «🍏 iOS ulash» bosilganda qo'llanma videoni yuboradi.
+
+    `lang` — tugmani bosgan foydalanuvchi tili (LanguageMiddleware'dan keladi).
+    """
+
+    platform = (callback.data or "").split(":", 1)[-1]
+    entry = HOWTO.get(platform)
+    if not entry:
+        await callback.answer()
+        return
+
+    caption_key, settings_field = entry
+    # Qo'llanmani foydalanuvchi tilida beramiz (til middleware'dan kelgan)
+    caption = t(lang, caption_key)
+    message_id = getattr(settings, settings_field, None)
+
+    # Tugmadagi "soat" belgisini darhol o'chiramiz (Telegram 10 soniya kutadi)
+    await callback.answer()
+
+    chat_id = callback.message.chat.id if callback.message else callback.from_user.id
+
+    try:
+        if settings.media_channel_id and message_id:
+            await bot.copy_message(
+                chat_id=chat_id,
+                from_chat_id=settings.media_channel_id,
+                message_id=message_id,
+                caption=caption,
+            )
+        else:
+            # Kanal/xabar ID sozlanmagan — hech bo'lmasa matnli qo'llanmani beramiz
+            await bot.send_message(chat_id, caption)
+    except Exception as e:
+        # Bot kanalga a'zo emas / xabar o'chirilgan — bot yiqilmasin, matn ketsin
+        logger.warning("Howto media yuborilmadi (%s: %s) — matn bilan yuboramiz", platform, e)
+        await bot.send_message(chat_id, caption)
+
+    logger.info(
+        "howto:%s bosildi — user_id=%d",
+        platform,
+        callback.from_user.id if callback.from_user else 0,
+    )
+
+
+# ============================================================
 # FILE_ID NI OLISH UCHUN YORDAMCHI HANDLER
 #
 # Botga rasm/video yuborsangiz — file_id ni logga chiqaradi.
@@ -337,6 +401,13 @@ async def on_private_message(message: Message) -> None:
         tg_date=tg_date,
     )
     logger.info("Saved private bot message to DB: user=%d, msg_id=%d", message.from_user.id if message.from_user else 0, message.message_id)
+
+    # --- file_id javoblari FAQAT ADMIN uchun ---
+    # Bu javoblar (📷 file_id: ... START_PHOTO_FILE_ID ga qo'ying) — media sozlash
+    # uchun mo'ljallangan developer asbobi. Oddiy foydalanuvchiga texnik matn
+    # ko'rsatilmasin — u faqat DB ga saqlansin (yuqorida bajarildi) va tinch qolsin.
+    if not (message.from_user and message.from_user.id in settings.admin_ids):
+        return
 
     # --- 1. RASM ---
     if message.photo:

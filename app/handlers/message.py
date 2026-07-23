@@ -37,9 +37,21 @@ from app.handlers.connection import (
     connection_owners,
     connection_user_chats,
 )
+from app.i18n import pick_lang, t
 
 router = Router(name="message")
 logger = logging.getLogger("bot.handlers.message")
+
+
+def owner_lang(connection_id: Optional[str]) -> str:
+    """Connection egasining (owner) tili — keshdagi language_code bo'yicha.
+
+    Topilmasa yoki qo'llab-quvvatlanmasa — inglizchaga tushadi (app/i18n.py).
+    Owner'ga yuboriladigan bildirishnomalarni o'z tilida berish uchun ishlatiladi.
+    """
+    owner = connection_owner_users.get(connection_id) if connection_id else None
+    lang_code = owner.get("language_code") if owner else None
+    return pick_lang(lang_code)
 
 
 # ============================================================
@@ -322,6 +334,7 @@ async def _send_media_by_id(
     file_id: Optional[str],
     header: str,
     body: str = "",
+    lang: str = "uz",
 ) -> None:
     """
     header (+ body) va kontentni chat_id ga yuboradi.
@@ -365,7 +378,7 @@ async def _send_media_by_id(
             if not ok:
                 await bot.send_message(
                     chat_id=chat_id,
-                    text=f"{full_text}\n[{content_type} — media yuborilmadi]"[:4096],
+                    text=f"{full_text}\n[{content_type} — {t(lang, 'n_media_failed')}]"[:4096],
                     parse_mode="HTML",
                 )
             return
@@ -396,7 +409,7 @@ async def _send_media_by_id(
         if not ok:
             await bot.send_message(
                 chat_id=chat_id,
-                text=f"{full_text}\n[{content_type} — media yuborilmadi]"[:4096],
+                text=f"{full_text}\n[{content_type} — {t(lang, 'n_media_failed')}]"[:4096],
                 parse_mode="HTML",
             )
 
@@ -408,8 +421,14 @@ async def send_owner_media(
     file_id: Optional[str],
     header: str,
     body: str = "",
+    lang: Optional[str] = None,
 ) -> None:
-    """Owner (connection egasi) chatiga media/matn bildirishnoma. Best-effort."""
+    """Owner (connection egasi) chatiga media/matn bildirishnoma. Best-effort.
+
+    lang berilmasa — owner'ning keshdagi tili aniqlanadi (fallback: inglizcha).
+    """
+    if lang is None:
+        lang = owner_lang(connection_id)
     chat_id = await _resolve_user_chat_id(bot, connection_id)
     if not chat_id:
         logger.warning(
@@ -418,7 +437,7 @@ async def send_owner_media(
         )
         return
     try:
-        await _send_media_by_id(bot, chat_id, content_type, file_id, header, body)
+        await _send_media_by_id(bot, chat_id, content_type, file_id, header, body, lang=lang)
     except TelegramRetryAfter as e:
         logger.warning("Owner media send flood: %ss — o'tkazib yuborildi", e.retry_after)
     except Exception:
@@ -474,6 +493,7 @@ async def _resolve_owner_id(
             "first_name": conn_info.user.first_name,
             "last_name": getattr(conn_info.user, "last_name", None),
             "username": conn_info.user.username,
+            "language_code": getattr(conn_info.user, "language_code", None),
         }
         # user_chat_id ham saqlaymiz (forward uchun)
         user_chat_id = getattr(conn_info, "user_chat_id", None)

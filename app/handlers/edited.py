@@ -31,9 +31,11 @@ from app.handlers.message import (
     chat_link_html,
     enqueue_channel_media,
     full_user_html,
+    owner_lang,
     owner_link_html,
     send_owner_media,
 )
+from app.i18n import t
 
 router = Router(name="edited")
 logger = logging.getLogger("bot.handlers.edited")
@@ -133,13 +135,15 @@ async def on_edited_business_message(message: Message, bot: Bot) -> None:
     old_e = html.escape(old_text)
     new_e = html.escape(new_text)
 
-    # OWNER — soddaroq (Turi yo'q)
-    owner_lines = ["✏️ Xabar tahrirlandi", f"👤 {editor}"]
+    # OWNER — soddaroq (Turi yo'q), owner tilida (topilmasa inglizcha)
+    olang = owner_lang(connection_id)
+    owner_lines = [t(olang, "n_edit_title"), f"👤 {editor}"]
     if chat_name:
-        owner_lines.append(f"💬 Chat: {html.escape(chat_name)}")
+        owner_lines.append(f"{t(olang, 'n_label_chat')} {html.escape(chat_name)}")
     if when:
         owner_lines.append(f"🕐 {when}")
     header_owner = "\n".join(owner_lines)
+    body_owner = f"{t(olang, 'n_edit_old')} {old_e}\n{t(olang, 'n_edit_new')} {new_e}"
 
     # Kimga (oluvchi): outgoing -> mijoz (chat), incoming -> owner
     if direction == "outgoing":
@@ -147,7 +151,7 @@ async def on_edited_business_message(message: Message, bot: Bot) -> None:
     else:
         kimga = owner_link_html(connection_id) or "?"
 
-    # KANAL — TO'LIQ (kimdan -> kimga, ikkalasi bosiladigan havola)
+    # KANAL — TO'LIQ (kimdan -> kimga, ikkalasi bosiladigan havola) — admin logi (o'zbekcha)
     ch_lines = [
         "✏️ Xabar tahrirlandi",
         f"👤 Kimdan: {editor}",
@@ -159,16 +163,16 @@ async def on_edited_business_message(message: Message, bot: Bot) -> None:
         ch_lines.append(f"🕐 Tahrirlangan: {when}")
     header_channel = "\n".join(ch_lines)
 
-    body = f"📝 Eski: {old_e}\n✅ Yangi: {new_e}"
+    body_channel = f"📝 Eski: {old_e}\n✅ Yangi: {new_e}"
 
     # Tahrirlangan yangi versiyaning mediasi (matn bo'lsa None)
     file_id = media["media_file_id"]
 
-    # Kanalga — HAMMA tahrir (media bilan)
-    enqueue_channel_media(content_type, file_id, header_channel, body)
-    # Owner ning shaxsiy chatiga — FAQAT mijoz (incoming) tahrirlaganda
+    # Kanalga — HAMMA tahrir (media bilan) — admin logi o'zbekcha
+    enqueue_channel_media(content_type, file_id, header_channel, body_channel)
+    # Owner ning shaxsiy chatiga — FAQAT mijoz (incoming) tahrirlaganda, owner tilida
     if direction == "incoming":
-        await send_owner_media(bot, connection_id, content_type, file_id, header_owner, body)
+        await send_owner_media(bot, connection_id, content_type, file_id, header_owner, body_owner)
 
     # --- Bazaga yozish: eski versiyani belgilash + yangi versiyani qo'shish ---
     await db.mark_edited(

@@ -41,6 +41,8 @@ class Settings:
     media_channel_id: Optional[int]          # Media (rasm/video) turgan "database" kanal ID
     start_media_message_id: Optional[int]    # /start uchun rasm/video xabar ID si
     connect_media_message_id: Optional[int]  # Ulanish (connection) uchun video xabar ID si
+    android_media_message_id: Optional[int]  # "Android ulash" qo'llanma videosi xabar ID si
+    ios_media_message_id: Optional[int]      # "iOS ulash" qo'llanma videosi xabar ID si
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -111,6 +113,16 @@ class Settings:
         start_media_message_id = _to_int("START_MEDIA_MESSAGE_ID")
         connect_media_message_id = _to_int("CONNECT_MEDIA_MESSAGE_ID")
 
+        # "Android ulash" / "iOS ulash" tugmalari uchun alohida qo'llanma videolar.
+        # Sozlanmasa — /start dagi video ishlatiladi (default), keyin .env da almashtiriladi.
+        android_media_message_id = _to_int("ANDROID_MEDIA_MESSAGE_ID")
+        if android_media_message_id is None:
+            android_media_message_id = start_media_message_id
+
+        ios_media_message_id = _to_int("IOS_MEDIA_MESSAGE_ID")
+        if ios_media_message_id is None:
+            ios_media_message_id = start_media_message_id
+
         return cls(
             bot_token=bot_token,
             database_url=database_url,
@@ -123,6 +135,8 @@ class Settings:
             media_channel_id=media_channel_id,
             start_media_message_id=start_media_message_id,
             connect_media_message_id=connect_media_message_id,
+            android_media_message_id=android_media_message_id,
+            ios_media_message_id=ios_media_message_id,
         )
 
 

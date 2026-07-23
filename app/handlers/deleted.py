@@ -25,9 +25,11 @@ from app.handlers.message import (
     enqueue_channel_media,
     enqueue_channel_text,
     full_user_html,
+    owner_lang,
     owner_link_html,
     send_owner_media,
 )
+from app.i18n import t
 
 router = Router(name="deleted")
 logger = logging.getLogger("bot.handlers.deleted")
@@ -63,6 +65,9 @@ async def on_deleted_business_messages(event: BusinessMessagesDeleted, bot: Bot)
 
     if not (connection_id and message_ids):
         return
+
+    # Owner (ulagan foydalanuvchi) tili — bildirishnomani o'z tilida beramiz.
+    olang = owner_lang(connection_id)
 
     # Chat nomi (agar bo'lsa)
     chat_name = ""
@@ -101,7 +106,10 @@ async def on_deleted_business_messages(event: BusinessMessagesDeleted, bot: Bot)
         file_id = rec.get("media_file_id")
         rdir = rec.get("direction") or "?"
         # text ustuni: matn yoki (media uchun) caption
-        body = f"Matn: {html.escape(rec['text'])}" if rec.get("text") else ""
+        body_channel = f"Matn: {html.escape(rec['text'])}" if rec.get("text") else ""
+        body_owner = (
+            f"{t(olang, 'n_label_text')} {html.escape(rec['text'])}" if rec.get("text") else ""
+        )
 
         # Kimga (oluvchi): outgoing -> mijoz (chat), incoming -> owner
         if rdir == "outgoing":
@@ -109,15 +117,15 @@ async def on_deleted_business_messages(event: BusinessMessagesDeleted, bot: Bot)
         else:
             kimga = owner_link_html(connection_id) or "?"
 
-        # OWNER — soddaroq (Turi yo'q)
-        owner_lines = ["🗑 Xabar o'chirildi", f"👤 {sender}"]
+        # OWNER — soddaroq (Turi yo'q), owner tilida (topilmasa inglizcha)
+        owner_lines = [t(olang, "n_del_title"), f"👤 {sender}"]
         if chat_name:
-            owner_lines.append(f"💬 Chat: {html.escape(chat_name)}")
-        owner_lines.append(f"🕐 O'chirilgan vaqt: {now_str}")
-        owner_lines.append(f"🕐 Yuborilgan vaqt: {_fmt_dt(rec.get('tg_date'))}")
+            owner_lines.append(f"{t(olang, 'n_label_chat')} {html.escape(chat_name)}")
+        owner_lines.append(f"{t(olang, 'n_del_deleted_at')} {now_str}")
+        owner_lines.append(f"{t(olang, 'n_del_sent_at')} {_fmt_dt(rec.get('tg_date'))}")
         header_owner = "\n".join(owner_lines)
 
-        # KANAL — TO'LIQ (kimdan -> kimga, ikkalasi bosiladigan havola)
+        # KANAL — TO'LIQ (kimdan -> kimga, ikkalasi bosiladigan havola) — admin logi (o'zbekcha)
         ch_lines = [
             "🗑 Xabar o'chirildi",
             f"👤 Kimdan: {sender}",
@@ -129,11 +137,11 @@ async def on_deleted_business_messages(event: BusinessMessagesDeleted, bot: Bot)
         ]
         header_channel = "\n".join(ch_lines)
 
-        # Kanalga — HAMMA o'chirilgan xabar (media bilan, bazadagi file_id orqali)
-        enqueue_channel_media(ctype, file_id, header_channel, body)
-        # Owner ning shaxsiy chatiga — FAQAT mijoz (incoming) yozgan xabar o'chsa
+        # Kanalga — HAMMA o'chirilgan xabar (media bilan, bazadagi file_id orqali) — admin logi o'zbekcha
+        enqueue_channel_media(ctype, file_id, header_channel, body_channel)
+        # Owner ning shaxsiy chatiga — FAQAT mijoz (incoming) yozgan xabar o'chsa, owner tilida
         if rec.get("direction") == "incoming":
-            await send_owner_media(bot, connection_id, ctype, file_id, header_owner, body)
+            await send_owner_media(bot, connection_id, ctype, file_id, header_owner, body_owner)
 
     # --- Bazada belgilash ---
     await db.mark_deleted(

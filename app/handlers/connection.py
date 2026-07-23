@@ -14,21 +14,13 @@ from aiogram.types import BusinessConnection
 
 from app.config import settings
 from app.db import db
+from app.i18n import t, pick_lang
 
 router = Router(name="connection")
 logger = logging.getLogger("bot.handlers.connection")
 
-# Biznes akkaunt ulanganda yuboriladigan qo'llanma matni (video tagida caption).
-CONNECT_CAPTION = (
-    "✅ <b>Bot muvaffaqiyatli ulandi</b>\n\n"
-    "<b>Qanday foydalanish kerak?</b>\n"
-    "➖ Agar suhbatdoshingiz xabarni o'chirsa, bot darhol sizga o'sha xabar "
-    "nusxasini yuboradi (faqat bot ulangandan KEYIN yuborilgan xabarlar bilan ishlaydi)\n"
-    "➖ Taymerli surat/videolarni yuklab olish uchun, suhbatdoshingiz bilan dialogda "
-    "ularga istalgan xabar bilan javob berishingiz kerak (videoda ☝️ misol ko'rsatilgan) "
-    "(OCHISHDAN OLDIN, BU MUHIM!)\n\n"
-    "❗ Bot faqat bot ulangandan keyin olingan YANGI xabarlar bilan ishlaydi"
-)
+# Biznes akkaunt ulanganda yuboriladigan qo'llanma matni ko'p tilda —
+# app/i18n.py da "connect_caption" kaliti (en/ru/uz/tg/kk/ky).
 
 # In-memory cache: connection_id → owner user_id
 # Direction aniqlashda ishlatiladi
@@ -55,6 +47,7 @@ async def on_business_connection(event: BusinessConnection, bot: Bot) -> None:
         "first_name": event.user.first_name,
         "last_name": getattr(event.user, "last_name", None),
         "username": event.user.username,
+        "language_code": getattr(event.user, "language_code", None),
     }
     user_chat_id = getattr(event, "user_chat_id", None)
     if user_chat_id:
@@ -131,6 +124,11 @@ async def on_business_connection(event: BusinessConnection, bot: Bot) -> None:
     # Tabriklash: "database" kanaldagi qo'llanma videosi + caption yuboramiz.
     if event.is_enabled:
         user_chat_id = getattr(event, "user_chat_id", None) or event.user.id
+        # Bu yerda tilni O'ZIMIZ aniqlaymiz (til middleware'dan olmaymiz):
+        # ulanish event'ida event.user = botni ulagan OWNER'ning o'zi, tili shu.
+        # Topilmasa yoki qo'llab-quvvatlanmasa — inglizchaga tushadi (app/i18n.py).
+        lang = pick_lang(getattr(event.user, "language_code", None))
+        connect_caption = t(lang, "connect_caption")
         try:
             if settings.media_channel_id and settings.connect_media_message_id:
                 # copy_message file_id'ga bog'liq emas — har safar kanaldan o'qiydi (eskirmaydi).
@@ -138,16 +136,16 @@ async def on_business_connection(event: BusinessConnection, bot: Bot) -> None:
                     chat_id=user_chat_id,
                     from_chat_id=settings.media_channel_id,
                     message_id=settings.connect_media_message_id,
-                    caption=CONNECT_CAPTION,
+                    caption=connect_caption,
                 )
             else:
-                await bot.send_message(chat_id=user_chat_id, text=CONNECT_CAPTION)
+                await bot.send_message(chat_id=user_chat_id, text=connect_caption)
             logger.info("Sent welcome message to user_chat_id=%s", user_chat_id)
         except Exception as e:
             # Video yuborilmasa (kanal/xabar topilmasa) — matn bilan urinib ko'ramiz
             logger.warning("Ulanish videosi yuborilmadi (user_chat_id=%s): %s — matn bilan", user_chat_id, e)
             try:
-                await bot.send_message(chat_id=user_chat_id, text=CONNECT_CAPTION)
+                await bot.send_message(chat_id=user_chat_id, text=connect_caption)
             except Exception as e2:
                 logger.warning("Welcome matni ham yuborilmadi (user_chat_id=%s): %s", user_chat_id, e2)
 
