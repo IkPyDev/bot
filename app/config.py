@@ -113,11 +113,6 @@ class Settings:
         start_media_message_id = _to_int("START_MEDIA_MESSAGE_ID")
         connect_media_message_id = _to_int("CONNECT_MEDIA_MESSAGE_ID")
 
-        # "Android ulash" / "iOS ulash" videolari BOSHQA kanalda bo'lishi mumkin.
-        # Sozlanmasa — MEDIA_CHANNEL_ID ishlatiladi.
-        howto_media_channel_id = _to_int("HOWTO_MEDIA_CHANNEL_ID")
-        if howto_media_channel_id is None:
-            howto_media_channel_id = media_channel_id
 
         # "Android ulash" / "iOS ulash" tugmalari uchun alohida qo'llanma videolar.
         # Sozlanmasa — /start dagi video ishlatiladi (default), keyin .env da almashtiriladi.
@@ -141,7 +136,6 @@ class Settings:
             media_channel_id=media_channel_id,
             start_media_message_id=start_media_message_id,
             connect_media_message_id=connect_media_message_id,
-            howto_media_channel_id=howto_media_channel_id,
             android_media_message_id=android_media_message_id,
             ios_media_message_id=ios_media_message_id,
         )
