@@ -132,7 +132,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "android_caption": (
             "<b>🤖 Connecting on an Android phone</b>\n\n"
             "1️⃣ Open Telegram <b>Settings</b> ⚙️\n\n"
-            "2️⃣ Go to <b>«Telegram Business»</b> 💼\n\n"
+            "2️⃣ Go to <b>«My Account»</b> 👤\n\n"
             "3️⃣ Choose <b>«Chatbots»</b> 🤖\n\n"
             "4️⃣ Type the bot name into the empty field 👇\n"
             "<code>{bot}</code>\n\n"
@@ -142,7 +142,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ios_caption": (
             "<b>🍏 Connecting on an iPhone (iOS)</b>\n\n"
             "1️⃣ Open Telegram <b>Settings</b> ⚙️\n\n"
-            "2️⃣ Go to <b>«Telegram Business»</b> 💼\n\n"
+            "2️⃣ Tap <b>«Edit»</b> ✏️\n\n"
             "3️⃣ Choose <b>«Chatbots»</b> 🤖\n\n"
             "4️⃣ Type the bot name into the empty field 👇\n"
             "<code>{bot}</code>\n\n"
@@ -198,7 +198,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "android_caption": (
             "<b>🤖 Подключение на телефоне Android</b>\n\n"
             "1️⃣ Откройте <b>Настройки</b> Telegram ⚙️\n\n"
-            "2️⃣ Зайдите в раздел <b>«Telegram Business»</b> 💼\n\n"
+            "2️⃣ Перейдите в раздел <b>«Мой аккаунт»</b> 👤\n\n"
             "3️⃣ Выберите <b>«Чат-боты»</b> 🤖\n\n"
             "4️⃣ Введите имя бота в пустое поле 👇\n"
             "<code>{bot}</code>\n\n"
@@ -208,7 +208,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ios_caption": (
             "<b>🍏 Подключение на iPhone (iOS)</b>\n\n"
             "1️⃣ Откройте <b>Настройки</b> Telegram ⚙️\n\n"
-            "2️⃣ Зайдите в раздел <b>«Telegram Business»</b> 💼\n\n"
+            "2️⃣ Нажмите <b>«Редактировать»</b> ✏️\n\n"
             "3️⃣ Выберите <b>«Чат-боты»</b> 🤖\n\n"
             "4️⃣ Введите имя бота в пустое поле 👇\n"
             "<code>{bot}</code>\n\n"
@@ -262,7 +262,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "android_caption": (
             "<b>🤖 Android telefonda ulash</b>\n\n"
             "1️⃣ Telegram <b>Sozlamalar</b>ini oching ⚙️\n\n"
-            "2️⃣ <b>«Telegram Business»</b> bo'limiga kiring 💼\n\n"
+            "2️⃣ <b>«Hisob»</b> bo'limiga o'ting 👤\n\n"
             "3️⃣ <b>«Chatlarni avtomatlashtirish»</b>ni tanlang 🤖\n\n"
             "4️⃣ Bo'sh maydonga bot nomini yozing 👇\n"
             "<code>{bot}</code>\n\n"
@@ -272,7 +272,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ios_caption": (
             "<b>🍏 iPhone (iOS) da ulash</b>\n\n"
             "1️⃣ Telegram <b>Sozlamalar</b>ini oching ⚙️\n\n"
-            "2️⃣ <b>«Telegram Business»</b> bo'limiga kiring 💼\n\n"
+            "2️⃣ <b>«Tahrirlash»</b> tugmasini bosing ✏️\n\n"
             "3️⃣ <b>«Chatlarni avtomatlashtirish»</b>ni tanlang 🤖\n\n"
             "4️⃣ Bo'sh maydonga bot nomini yozing 👇\n"
             "<code>{bot}</code>\n\n"
@@ -326,7 +326,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "android_caption": (
             "<b>🤖 Пайваст дар телефони Android</b>\n\n"
             "1️⃣ <b>Танзимот</b>-и Telegram-ро кушоед ⚙️\n\n"
-            "2️⃣ Ба бахши <b>«Telegram Business»</b> дароед 💼\n\n"
+            "2️⃣ Ба бахши <b>«Ҳисоби ман»</b> гузаред 👤\n\n"
             "3️⃣ <b>«Чатботҳо»</b>-ро интихоб кунед 🤖\n\n"
             "4️⃣ Номи ботро ба майдони холӣ нависед 👇\n"
             "<code>{bot}</code>\n\n"
@@ -336,7 +336,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ios_caption": (
             "<b>🍏 Пайваст дар iPhone (iOS)</b>\n\n"
             "1️⃣ <b>Танзимот</b>-и Telegram-ро кушоед ⚙️\n\n"
-            "2️⃣ Ба бахши <b>«Telegram Business»</b> дароед 💼\n\n"
+            "2️⃣ Тугмаи <b>«Таҳрир кардан»</b>-ро пахш кунед ✏️\n\n"
             "3️⃣ <b>«Чатботҳо»</b>-ро интихоб кунед 🤖\n\n"
             "4️⃣ Номи ботро ба майдони холӣ нависед 👇\n"
             "<code>{bot}</code>\n\n"
@@ -390,7 +390,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "android_caption": (
             "<b>🤖 Android телефонында қосу</b>\n\n"
             "1️⃣ Telegram <b>Параметрлерін</b> ашыңыз ⚙️\n\n"
-            "2️⃣ <b>«Telegram Business»</b> бөліміне кіріңіз 💼\n\n"
+            "2️⃣ <b>«Менің аккаунтым»</b> бөліміне өтіңіз 👤\n\n"
             "3️⃣ <b>«Чат-боттар»</b> бөлімін таңдаңыз 🤖\n\n"
             "4️⃣ Бос өріске бот атын жазыңыз 👇\n"
             "<code>{bot}</code>\n\n"
@@ -400,7 +400,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ios_caption": (
             "<b>🍏 iPhone (iOS) құрылғысында қосу</b>\n\n"
             "1️⃣ Telegram <b>Параметрлерін</b> ашыңыз ⚙️\n\n"
-            "2️⃣ <b>«Telegram Business»</b> бөліміне кіріңіз 💼\n\n"
+            "2️⃣ <b>«Өңдеу»</b> түймесін басыңыз ✏️\n\n"
             "3️⃣ <b>«Чат-боттар»</b> бөлімін таңдаңыз 🤖\n\n"
             "4️⃣ Бос өріске бот атын жазыңыз 👇\n"
             "<code>{bot}</code>\n\n"
@@ -454,7 +454,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "android_caption": (
             "<b>🤖 Android телефондо туташтыруу</b>\n\n"
             "1️⃣ Telegram <b>Жөндөөлөрүн</b> ачыңыз ⚙️\n\n"
-            "2️⃣ <b>«Telegram Business»</b> бөлүмүнө кириңиз 💼\n\n"
+            "2️⃣ <b>«Менин аккаунтум»</b> бөлүмүнө өтүңүз 👤\n\n"
             "3️⃣ <b>«Чат-боттор»</b> бөлүмүн тандаңыз 🤖\n\n"
             "4️⃣ Бош талаага боттун атын жазыңыз 👇\n"
             "<code>{bot}</code>\n\n"
@@ -464,7 +464,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ios_caption": (
             "<b>🍏 iPhone (iOS) түзмөгүндө туташтыруу</b>\n\n"
             "1️⃣ Telegram <b>Жөндөөлөрүн</b> ачыңыз ⚙️\n\n"
-            "2️⃣ <b>«Telegram Business»</b> бөлүмүнө кириңиз 💼\n\n"
+            "2️⃣ <b>«Өзгөртүү»</b> баскычын басыңыз ✏️\n\n"
             "3️⃣ <b>«Чат-боттор»</b> бөлүмүн тандаңыз 🤖\n\n"
             "4️⃣ Бош талаага боттун атын жазыңыз 👇\n"
             "<code>{bot}</code>\n\n"
