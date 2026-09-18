@@ -195,3 +195,17 @@ docker compose down -v         # ⚠️ ma'lumotni HAM o'chiradi
 - [ ] `deploy.yml` TARGET yo'li to'g'ri
 - [ ] `git push` bilan CI/CD sinovdan o'tdi (yashil ✅)
 - [ ] Bu faylning 1-bo'limi (server ma'lumotlari) yangilandi
+
+## Boshqa serverga ko'chish (bot orqali)
+
+1. Eski serverdagi botga admin sifatida `/backup` yozing — bazaning to'liq nusxasi (`.sql.gz`) keladi.
+2. Yangi serverda botni ishga tushiring (`docker compose up -d --build`). Eski serverdagi botni to'xtating — token bitta joyda ishlashi shart.
+3. Botga `/restore` yozing, `.sql.gz` faylni yuboring, `/tasdiq` bosing.
+4. Bot avval hozirgi (bo'sh) bazaning nusxasini yuboradi, keyin tiklaydi va natijani (xabarlar soni) ko'rsatadi.
+
+Tiklash bitta tranzaksiyada bajariladi — xato bo'lsa baza o'zgarmaydi.
+Fayl 20 MB dan katta bo'lsa (Telegram cheklovi), serverda qo'lda:
+`gunzip -c FAYL.sql.gz | grep -v '^SET transaction_timeout' | docker compose exec -T db psql -U USER -d DB -v ON_ERROR_STOP=1 --single-transaction`
+(bo'sh bazaga yuklanadi — yangi serverda bot hali ishga tushmagan bo'lsin).
+
+Boshqa admin buyruqlari: `/admin` (ro'yxat), `/logs [sana]`, `/json [sana]`, `/loglar`.

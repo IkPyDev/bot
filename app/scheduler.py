@@ -16,6 +16,7 @@ MUHIM:
 
 import asyncio
 import gzip
+import json
 import logging
 import os
 import shutil
@@ -99,7 +100,7 @@ async def _backup_logs(bot: Bot, channel_id: int, day: str, tmp_dir: str) -> Non
         _safe_remove(gz_path)
 
 
-async def _backup_db(bot: Bot, channel_id: int, day: str, tmp_dir: str) -> None:
+async def _backup_db(bot: Bot, channel_id: int, day: str, tmp_dir: str) -> bool:
     """PostgreSQL ni pg_dump qilib, gzip qilib kanalga yuboradi."""
     dump_path = os.path.join(tmp_dir, f"db-{day}.sql")
     gz_path = dump_path + ".gz"
@@ -116,7 +117,7 @@ async def _backup_db(bot: Bot, channel_id: int, day: str, tmp_dir: str) -> None:
         )
     except FileNotFoundError:
         logger.error("pg_dump topilmadi — postgresql-client o'rnatilmagan. DB backup o'tkazib yuborildi.")
-        return
+        return False
 
     _, stderr = await proc.communicate()
     if proc.returncode != 0:
@@ -126,16 +127,162 @@ async def _backup_db(bot: Bot, channel_id: int, day: str, tmp_dir: str) -> None:
             (stderr or b"").decode(errors="replace")[:500],
         )
         _safe_remove(dump_path)
-        return
+        return False
 
     try:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, _gzip_file, dump_path, gz_path)
         await _send_document(bot, channel_id, gz_path, f"🗄 DB backup — {day}")
-        logger.info("DB backup kanalga yuborildi: %s", day)
+        logger.info("DB backup yuborildi (chat=%s): %s", channel_id, day)
+        return True
     finally:
         _safe_remove(dump_path)
         _safe_remove(gz_path)
+
+
+# ============================================================
+# LOG FAYLLARI va TELEGRAM UPDATE'LARI (to'liq JSON)
+# ============================================================
+
+def log_dir() -> str:
+    return os.path.dirname(settings.log_file) or "."
+
+
+def tmp_dir() -> str:
+    path = os.path.join(log_dir(), "_backup_tmp")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def log_path(day: str) -> str:
+    """day = 'KUN_OY_YIL' (masalan 18_09_2026)."""
+    return os.path.join(log_dir(), f"log_{day}.log")
+
+
+def list_log_days() -> list[str]:
+    """Serverdagi log kunlari — eng yangisi birinchi."""
+    days = []
+    for name in os.listdir(log_dir()):
+        if name.startswith("log_") and name.endswith(".log"):
+            day = name[4:-4]
+            try:
+                days.append((datetime.strptime(day, "%d_%m_%Y"), day))
+            except ValueError:
+                pass
+    return [d for _, d in sorted(days, reverse=True)]
+
+
+def _export_updates_json(src_log: str, dst_json: str) -> int:
+    """
+    Log'dagi har bir Telegram update'ni (RAW UPDATE) to'liq, ochilgan (indent)
+    JSON ro'yxat qilib yozadi. BLOKLOVCHI — executor da chaqiriladi.
+    Qaytaradi: nechta update yozildi.
+    """
+    count = 0
+    with open(src_log, encoding="utf-8", errors="replace") as f_in, \
+            open(dst_json, "w", encoding="utf-8") as f_out:
+        f_out.write("[\n")
+        for line in f_in:
+            if "RAW UPDATE" not in line:
+                continue
+            try:
+                rec = json.loads(line)
+                upd = rec.get("raw_update")
+                if not isinstance(upd, dict):
+                    upd = json.loads(rec["message"].split(" | ", 1)[1])
+            except Exception:
+                continue
+            item = {"logged_at": rec.get("timestamp"), "event": rec.get("event_type"), "update": upd}
+            f_out.write((",\n" if count else "") + json.dumps(item, ensure_ascii=False, indent=2))
+            count += 1
+        f_out.write("\n]\n")
+    return count
+
+
+async def send_file(bot: Bot, chat_id: int, path: str, caption: str) -> None:
+    """Faylni yuboradi; 45 MB dan katta bo'lsa — gzip qilib yuboradi."""
+    if os.path.getsize(path) <= 45 * 1024 * 1024:
+        await _send_document(bot, chat_id, path, caption)
+        return
+    gz_path = path + ".gz"
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, _gzip_file, path, gz_path)
+    try:
+        await _send_document(bot, chat_id, gz_path, caption)
+    finally:
+        _safe_remove(gz_path)
+
+
+async def send_updates_json(bot: Bot, chat_id: int, day: str) -> Optional[int]:
+    """Kunning barcha Telegram update'larini updates_<day>.json qilib yuboradi."""
+    src = log_path(day)
+    if not os.path.exists(src):
+        return None
+    dst = os.path.join(tmp_dir(), f"updates_{day}.json")
+    loop = asyncio.get_running_loop()
+    try:
+        count = await loop.run_in_executor(None, _export_updates_json, src, dst)
+        await send_file(bot, chat_id, dst, f"🧾 Telegram update'lari (to'liq JSON) — {day}\nJami: {count} ta")
+        return count
+    finally:
+        _safe_remove(dst)
+
+
+# ============================================================
+# BAZANI TIKLASH (restore) — boshqa serverga ko'chish uchun
+# ============================================================
+
+def _prepare_sql(src: str, dst: str) -> None:
+    """
+    .sql yoki .sql.gz ni oddiy .sql ga ochadi. BLOKLOVCHI.
+    'SET transaction_timeout' — pg_dump 17 qo'shadi, Postgres 16 tanimaydi — olib tashlanadi.
+    """
+    opener = gzip.open if src.endswith(".gz") else open
+    with opener(src, "rt", encoding="utf-8", errors="replace") as f_in, \
+            open(dst, "w", encoding="utf-8") as f_out:
+        for line in f_in:
+            if line.startswith("SET transaction_timeout"):
+                continue
+            f_out.write(line)
+
+
+async def restore_db(src_path: str) -> tuple[bool, str]:
+    """
+    Joriy bazani dump fayldagi ma'lumot bilan TO'LIQ almashtiradi.
+
+    Hammasi BITTA tranzaksiyada: eski jadvallar o'chiriladi, dump yuklanadi.
+    Biror xato bo'lsa — hammasi bekor qilinadi, eski ma'lumot joyida qoladi.
+    Qaytaradi: (muvaffaqiyatmi, xato matni).
+    """
+    sql_path = os.path.join(tmp_dir(), "restore.sql")
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(None, _prepare_sql, src_path, sql_path)
+        proc = await asyncio.create_subprocess_exec(
+            "psql",
+            "--dbname", settings.database_url,
+            "-v", "ON_ERROR_STOP=1",
+            "--single-transaction",
+            "-q",
+            "-c", "DROP SCHEMA public CASCADE; CREATE SCHEMA public;",
+            "-f", sql_path,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        err = (stderr or b"").decode(errors="replace").strip()
+        if proc.returncode != 0:
+            logger.error("Restore xato (code=%s): %s", proc.returncode, err[:1000])
+            return False, err[-800:] or f"psql code={proc.returncode}"
+        logger.info("Baza dump fayldan tiklandi: %s", src_path)
+        return True, ""
+    except FileNotFoundError:
+        return False, "psql topilmadi (postgresql-client o'rnatilmagan)"
+    except Exception as e:
+        logger.exception("Restore kutilmagan xato")
+        return False, str(e)
+    finally:
+        _safe_remove(sql_path)
 
 
 async def _do_daily(bot: Bot, channel_id: int) -> None:
@@ -159,6 +306,11 @@ async def _do_daily(bot: Bot, channel_id: int) -> None:
         await _backup_db(bot, channel_id, day, tmp_dir)
     except Exception:
         logger.exception("DB backup xatolik")
+
+    try:
+        await send_updates_json(bot, channel_id, day)
+    except Exception:
+        logger.exception("Update JSON backup xatolik")
 
 
 async def _loop(bot: Bot, channel_id: int, hour: int, minute: int) -> None:

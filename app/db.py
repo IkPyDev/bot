@@ -93,6 +93,21 @@ class Database:
             self._pool = None
             logger.info("PostgreSQL pool closed")
 
+    async def reset_pool(self) -> None:
+        """Bazani tiklagandan keyin: eski ulanishlar (eski jadval keshlari) yangilanadi."""
+        if self._pool:
+            await self._pool.expire_connections()
+
+    async def count_rows(self) -> dict[str, int]:
+        """Asosiy jadvallardagi qatorlar soni (tiklash natijasini ko'rsatish uchun)."""
+        result = {}
+        for table in ("messages", "chats", "connections", "bot_users"):
+            try:
+                result[table] = await self._pool.fetchval(f"SELECT count(*) FROM {table}")
+            except Exception:
+                result[table] = -1
+        return result
+
     async def _run_migrations(self) -> None:
         """
         migrations/002_init_postgres.sql faylini o'qib bajaradi.

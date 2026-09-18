@@ -3,6 +3,7 @@
 from aiogram import Router
 
 from app.handlers.admin import router as admin_router
+from app.handlers.backup import router as backup_router
 from app.handlers.connection import router as connection_router
 from app.handlers.deleted import router as deleted_router
 from app.handlers.edited import router as edited_router
@@ -25,6 +26,9 @@ def get_main_router() -> Router:
 
     # Admin komandalari va FSM — eng birinchi (state handler ustuvor bo'lishi uchun)
     main_router.include_router(admin_router)
+
+    # Admin: baza nusxasi / tiklash / loglar / JSON (faqat ADMIN_IDS)
+    main_router.include_router(backup_router)
 
     # /start komandasi
     main_router.include_router(start_router)
