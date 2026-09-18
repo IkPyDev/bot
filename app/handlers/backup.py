@@ -21,7 +21,8 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app import scheduler
 from app.config import settings
@@ -35,6 +36,7 @@ _TG_DOWNLOAD_MAX = 20 * 1024 * 1024
 
 # Faqat adminlar — boshqalar uchun bu buyruqlar umuman ishlamaydi
 router.message.filter(F.from_user.id.func(lambda uid: uid in settings.admin_ids))
+router.callback_query.filter(F.from_user.id.func(lambda uid: uid in settings.admin_ids))
 
 
 class RestoreState(StatesGroup):
@@ -58,11 +60,16 @@ def _parse_day(arg: str | None) -> str | None:
         return None
 
 
-def _days_hint() -> str:
-    days = scheduler.list_log_days()[:10]
-    if not days:
+def _days_hint(limit: int = 10) -> str:
+    """Oxirgi log kunlari (xato xabarlari uchun). To'liq kalendar — /loglar."""
+    all_days = scheduler.list_log_days()
+    if not all_days:
         return "Serverda log fayllari yo'q."
-    return "Bor kunlar:\n" + "\n".join(f"• <code>{d.replace('_', '.')}</code>" for d in days)
+    lines = [f"• <code>{d.replace('_', '.')}</code>" for d in all_days[:limit]]
+    return (
+        "Oxirgi kunlar:\n" + "\n".join(lines)
+        + f"\n\n📅 Jami {len(all_days)} kun — oyma-oy ko'rish: /loglar"
+    )
 
 
 # ============================================================
@@ -78,7 +85,7 @@ async def on_admin_help(message: Message) -> None:
         "📄 /logs — bugungi log (yoki <code>/logs 17.09.2026</code>)\n"
         "🧾 /json — bugun Telegram'dan kelgan hamma narsa, to'liq JSON "
         "(yoki <code>/json 17.09.2026</code>)\n"
-        "📅 /loglar — serverda bor log kunlari\n\n"
+        "📅 /loglar — kalendar: oyma-oy varaqlab, kunni bosib log yoki JSON olish\n\n"
         "<blockquote>Har kuni 00:30 da log, baza nusxasi va JSON "
         "backup kanaliga o'zi ham yuboriladi.</blockquote>"
     )
@@ -108,20 +115,110 @@ async def on_backup(message: Message, bot: Bot) -> None:
 # /logs, /json, /loglar
 # ============================================================
 
+# ------------------------------------------------------------
+# /loglar — oyma-oy varaqlanadigan kalendar (tugmalar)
+#   lg:m:<OY_YIL>  — oy ko'rinishi      lg:d:<KUN>  — kun menyusi
+#   lg:l:<KUN>     — log yuborish       lg:j:<KUN>  — JSON yuborish
+# ------------------------------------------------------------
+
+def _months() -> list[str]:
+    """Log bor oylar ('09_2026'), eng yangisi birinchi."""
+    seen = []
+    for d in scheduler.list_log_days():
+        if d[3:] not in seen:
+            seen.append(d[3:])
+    return seen
+
+
+def _month_view(month: str) -> tuple[str, InlineKeyboardMarkup]:
+    months = _months()
+    days = [d for d in scheduler.list_log_days() if d[3:] == month]
+    days.reverse()  # 1 -> 31 tartibida
+    rows, row = [], []
+    for d in days:
+        row.append(InlineKeyboardButton(text=d[:2], callback_data=f"lg:d:{d}"))
+        if len(row) == 7:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    nav = []
+    i = months.index(month) if month in months else -1
+    if 0 <= i < len(months) - 1:  # eskiroq oy
+        nav.append(InlineKeyboardButton(text=f"◀️ {months[i + 1].replace('_', '.')}", callback_data=f"lg:m:{months[i + 1]}"))
+    if i > 0:  # yangiroq oy
+        nav.append(InlineKeyboardButton(text=f"{months[i - 1].replace('_', '.')} ▶️", callback_data=f"lg:m:{months[i - 1]}"))
+    if nav:
+        rows.append(nav)
+    text = (
+        f"📅 <b>{month.replace('_', '.')}</b> — {len(days)} kunlik log\n"
+        f"(jami {len(scheduler.list_log_days())} kun, {len(months)} oy)\n\n"
+        "Kunni tanlang 👇"
+    )
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _day_view(day: str) -> tuple[str, InlineKeyboardMarkup]:
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📄 Log", callback_data=f"lg:l:{day}"),
+            InlineKeyboardButton(text="🧾 JSON", callback_data=f"lg:j:{day}"),
+        ],
+        [InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"lg:m:{day[3:]}")],
+    ])
+    return f"📅 <b>{day.replace('_', '.')}</b>\n\nNimani yuklab olasiz?", kb
+
+
 @router.message(Command("loglar"))
 async def on_log_days(message: Message) -> None:
-    await message.answer(_days_hint())
+    months = _months()
+    if not months:
+        await message.answer("Serverda log fayllari yo'q.")
+        return
+    text, kb = _month_view(months[0])
+    await message.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("lg:"))
+async def on_log_calendar(call: CallbackQuery, bot: Bot) -> None:
+    _, action, value = call.data.split(":", 2)
+    if action in ("m", "d"):
+        text, kb = _month_view(value) if action == "m" else _day_view(value)
+        try:
+            await call.message.edit_text(text, reply_markup=kb)
+        except TelegramBadRequest:
+            pass  # "message is not modified"
+        await call.answer()
+        return
+    await call.answer("⏳ Tayyorlanmoqda...")
+    if action == "l":
+        await _send_log(bot, call.message.chat.id, value)
+    elif action == "j":
+        await _send_json(bot, call.message.chat.id, value)
+
+
+async def _send_log(bot: Bot, chat_id: int, day: str) -> None:
+    if not os.path.exists(scheduler.log_path(day)):
+        await bot.send_message(chat_id, f"❌ Bu kun uchun log topilmadi.\n\n{_days_hint()}")
+        return
+    today = day == datetime.now().strftime("%d_%m_%Y")
+    label = "joriy (hozirgacha)" if today else day.replace("_", ".")
+    await scheduler.send_file(bot, chat_id, scheduler.log_path(day), f"📄 Log — {label}")
+
+
+async def _send_json(bot: Bot, chat_id: int, day: str) -> None:
+    count = await scheduler.send_updates_json(bot, chat_id, day)
+    if count is None:
+        await bot.send_message(chat_id, f"❌ Bu kun uchun log topilmadi.\n\n{_days_hint()}")
 
 
 @router.message(Command("logs"))
 async def on_logs(message: Message, bot: Bot, command: CommandObject) -> None:
     day = _parse_day(command.args)
-    if not day or not os.path.exists(scheduler.log_path(day)):
-        await message.answer(f"❌ Bu kun uchun log topilmadi.\n\n{_days_hint()}")
+    if not day:
+        await message.answer(f"❌ Sana noto'g'ri.\n\n{_days_hint()}")
         return
-    today = day == datetime.now().strftime("%d_%m_%Y")
-    label = "joriy (hozirgacha)" if today else day
-    await scheduler.send_file(bot, message.chat.id, scheduler.log_path(day), f"📄 Log — {label}")
+    await _send_log(bot, message.chat.id, day)
 
 
 @router.message(Command("json"))
@@ -131,11 +228,8 @@ async def on_json(message: Message, bot: Bot, command: CommandObject) -> None:
         await message.answer(f"❌ Sana noto'g'ri.\n\n{_days_hint()}")
         return
     wait = await message.answer("⏳ JSON tayyorlanmoqda...")
-    count = await scheduler.send_updates_json(bot, message.chat.id, day)
-    if count is None:
-        await wait.edit_text(f"❌ Bu kun uchun log topilmadi.\n\n{_days_hint()}")
-    else:
-        await wait.delete()
+    await _send_json(bot, message.chat.id, day)
+    await wait.delete()
 
 
 # ============================================================
