@@ -6,6 +6,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# pg_dump — kunlik DB backup uchun (app/scheduler.py)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends postgresql-client && \
+    rm -rf /var/lib/apt/lists/*
+
 # Avval faqat requirements — Docker layer cache uchun (kod o'zgarsa qayta pip install bo'lmaydi)
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
