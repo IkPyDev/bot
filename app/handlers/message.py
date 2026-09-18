@@ -17,12 +17,14 @@ import html
 import io
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
 from aiogram import Bot, Router
-from aiogram.exceptions import TelegramRetryAfter
-from aiogram.types import BufferedInputFile, Message
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
+from aiogram.types import BufferedInputFile, InputMediaPhoto, Message, MessageEntity
+from aiogram.utils.text_decorations import html_decoration
 
 from app.config import settings
 from app.db import db
@@ -31,6 +33,7 @@ from app.extractors import (
     determine_direction,
     extract_media_fields,
     extract_text_or_caption,
+    special_content,
 )
 from app.handlers.connection import (
     connection_owner_users,
@@ -668,6 +671,7 @@ async def _send_reply_media(
     target_chat_id: int,
     is_owner: bool = False,
     answer_text: Optional[str] = None,
+    answer_entities: Optional[list[MessageEntity]] = None,
 ) -> None:
     reply_type = detect_content_type(reply)
     is_protected = getattr(reply, "has_protected_content", False)
@@ -687,33 +691,72 @@ async def _send_reply_media(
         f"🆔 Xabar ID: {reply.message_id}\n"
         f"📎 Turi: {reply_type}"
     )
+    # Asl xabar forward bo'lsa — kimdan/qayerdan forward qilingani
+    fwd = _forward_lines(reply)
+    if fwd:
+        reply_header += "\n" + "\n".join(fwd)
 
-    # Shu xabarga nima deb javob yozilgani (asosiy xabar matni/caption'i)
-    answer_suffix = ""
-    if answer_text:
-        answer_suffix = f"\n\n💬 Javob berildi:\n{html.escape(answer_text)}"
-
-    # --- TEXT reply ---
+    # Asl xabar matni + shu xabarga yozilgan javob — asl formatlash (havola, qalin...) bilan
     if reply_type == "text" and reply.text:
-        text = f"{reply_header}\n✍️ Matn:\n{html.escape(reply.text)}{answer_suffix}"
-        if len(text) > 4096:
-            text = text[:4093] + "..."
-        await bot.send_message(chat_id=target_chat_id, text=text, parse_mode="HTML")
-        return
+        r_text, r_ents = reply.text, reply.entities
+    else:
+        r_text, r_ents = getattr(reply, "caption", None) or "", reply.caption_entities
+        if not r_text:
+            try:
+                sp = special_content(reply, reply_type)
+            except Exception:
+                sp = None
+            if sp:
+                r_text, r_ents = sp[0], sp[1]
+    parts = []
+    if r_text:
+        parts.append((r_text, r_ents))
+    if answer_text:
+        parts.append(("\n\n💬 Javob berildi:\n" if r_text else "💬 Javob berildi:\n", None))
+        parts.append((answer_text, answer_entities))
+    body_text, body_ents = _concat_text(*parts)
 
-    reply_caption = getattr(reply, "caption", None) or ""
+    # --- TEXT reply --- (uzun bo'lsa bo'lib yuboriladi)
+    if reply_type == "text" and reply.text:
+        await _send_long(bot, target_chat_id, f"{reply_header}\n✍️ Matn:", body_text, body_ents)
+        return
 
     caption = reply_header
     # Kengaytirilgan media ma'lumotlari (file_id, o'lcham, davomiylik, ...)
     media_info = _extract_media_info(reply, reply_type)
     if media_info:
         caption += f"\n{html.escape(media_info)}"
-    if reply_caption:
-        caption += f"\n✍️ Matn: {html.escape(reply_caption)}"
-    caption += answer_suffix
-    if len(caption) > 1024:
-        caption = caption[:1021] + "..."
+    overflow = False
+    if body_text:
+        if _visible_len(caption) + 10 + _u16(body_text) <= _CAPTION_LIMIT:
+            caption += f"\n✍️ Matn: {html_decoration.unparse(body_text, body_ents)}"
+        else:
+            overflow = True
+    if _visible_len(caption) > _CAPTION_LIMIT:
+        # Sarlavha sig'madi — matn qilib yuboramiz, media caption'siz ketadi
+        await _send_html(bot, target_chat_id, caption)
+        caption = ""
 
+    await _send_reply_file(
+        bot, reply, reply_type, target_chat_id, caption, is_protected, is_owner,
+        fallback_text=caption,
+    )
+
+    if overflow:
+        await _send_long(bot, target_chat_id, "✍️ Matn (to'liq):", body_text, body_ents)
+
+
+async def _send_reply_file(
+    bot: Bot,
+    reply: Message,
+    reply_type: str,
+    target_chat_id: int,
+    caption: str,
+    is_protected: bool,
+    is_owner: bool,
+    fallback_text: str,
+) -> None:
+    """Javob berilgan xabarning faylini yuboradi. Fayl bo'lmasa — fallback_text."""
     file_id = None
     filename = "reply_file"
     if reply_type == "photo" and reply.photo:
@@ -774,8 +817,8 @@ async def _send_reply_media(
             await bot.send_message(chat_id=target_chat_id, text=caption, parse_mode="HTML")
             caption = ""
         await _download_and_send_media(bot, target_chat_id, reply_type, file_id, filename, caption, is_protected, is_owner, parse_mode="HTML")
-    else:
-        await bot.send_message(chat_id=target_chat_id, text=reply_header + answer_suffix, parse_mode="HTML")
+    elif fallback_text:
+        await _send_html(bot, target_chat_id, fallback_text)
 
 
 async def _send_copy_to_owner(
@@ -917,6 +960,198 @@ def _extract_media_info(msg: Message, ctype: str) -> str:
     return "\n".join(lines)
 
 
+# ============================================================
+# FORWARD / TASHQI JAVOB MA'LUMOTLARI va UZUN MATNNI BO'LISH
+# ============================================================
+
+_TEXT_LIMIT = 4096     # oddiy xabar chegarasi (ko'rinadigan belgi, UTF-16)
+_CAPTION_LIMIT = 1024  # media caption chegarasi
+
+
+def _u16(s: str) -> int:
+    """Telegram uzunlikni UTF-16 birlikda sanaydi (emoji = 2)."""
+    return len(s.encode("utf-16-le")) // 2
+
+
+def _visible_len(html_text: str) -> int:
+    """HTML matnning Telegram'da ko'rinadigan uzunligi (teglar sanalmaydi)."""
+    return _u16(html.unescape(re.sub(r"<[^>]+>", "", html_text)))
+
+
+def _ents(entities) -> list:
+    # custom_emoji — oddiy bot yubora olmaydi (xato beradi), emoji belgisi matnda qoladi
+    return [e for e in (entities or []) if e.type != "custom_emoji"]
+
+
+def _concat_text(*parts: tuple) -> tuple[str, list]:
+    """(matn, entity'lar) bo'laklarini bitta matnga qo'shadi, entity offset'larini suradi."""
+    text, entities = "", []
+    for part_text, part_ents in parts:
+        shift = _u16(text)
+        for e in _ents(part_ents):
+            entities.append(e.model_copy(update={"offset": e.offset + shift}))
+        text += part_text
+    return text, entities
+
+
+def _split_text(text: str, entities, first_limit: int, limit: int) -> list[tuple[str, list]]:
+    """
+    Matnni Telegram chegarasiga sig'adigan bo'laklarga ajratadi (iloji bo'lsa
+    qator oxiridan). Har bo'lakka o'z entity'lari (qalin, havola, ...) kesib beriladi.
+    """
+    parts = []
+    start, off16, cap = 0, 0, first_limit
+    while start < len(text):
+        end, size = start, 0
+        while end < len(text) and size + _u16(text[end]) <= cap:
+            size += _u16(text[end])
+            end += 1
+        if end < len(text):
+            nl = text.rfind("\n", start, end)
+            if nl > start + (end - start) // 2:
+                end = nl + 1
+        end = max(end, start + 1)
+        chunk = text[start:end]
+        clen = _u16(chunk)
+        chunk_ents = []
+        for e in _ents(entities):
+            s, f = max(e.offset, off16), min(e.offset + e.length, off16 + clen)
+            if s < f:
+                chunk_ents.append(e.model_copy(update={"offset": s - off16, "length": f - s}))
+        parts.append((chunk, chunk_ents))
+        start, off16, cap = end, off16 + clen, limit
+    return parts
+
+
+async def _send_html(bot: Bot, chat_id: int, text: str) -> None:
+    """HTML matn yuboradi. Teg buzilgan bo'lsa — teglarsiz oddiy matn qilib qayta yuboradi."""
+    try:
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+    except TelegramBadRequest as e:
+        logger.warning("HTML yuborilmadi (%s) — oddiy matn bilan qayta", e)
+        plain = html.unescape(re.sub(r"<[^>]+>", "", text))
+        await bot.send_message(chat_id=chat_id, text=plain[:_TEXT_LIMIT], parse_mode=None)
+
+
+async def _send_long(
+    bot: Bot, chat_id: int, header: str, text: str, entities=None
+) -> None:
+    """
+    header (HTML) + matn (asl formatlash bilan). 4096 dan oshsa — bir nechta
+    xabarga bo'lib yuboradi: "📄 Davomi (2/3)".
+    """
+    room = _TEXT_LIMIT - _visible_len(header) - 2
+    if room < 200:  # sarlavha juda uzun — alohida yuboramiz
+        await _send_html(bot, chat_id, header)
+        header, room = "", _TEXT_LIMIT
+    parts = _split_text(text, entities, room, _TEXT_LIMIT - 40)
+    for i, (chunk, chunk_ents) in enumerate(parts):
+        body = html_decoration.unparse(chunk, chunk_ents)
+        if i == 0:
+            msg = f"{header}\n\n{body}" if header else body
+        else:
+            msg = f"📄 Davomi ({i + 1}/{len(parts)})\n\n{body}"
+        await _send_html(bot, chat_id, msg)
+
+
+async def _send_photos(bot: Bot, chat_id: int, file_ids: list[str]) -> None:
+    """Maqola (rich_message) ichidagi rasmlar — 10 tadan albom qilib. Xato bo'lsa bot yiqilmaydi."""
+    for i in range(0, len(file_ids), 10):
+        group = [InputMediaPhoto(media=fid) for fid in file_ids[i:i + 10]]
+        try:
+            if len(group) == 1:
+                await bot.send_photo(chat_id=chat_id, photo=group[0].media)
+            else:
+                await bot.send_media_group(chat_id=chat_id, media=group)
+        except TelegramRetryAfter:
+            raise
+        except Exception as e:
+            logger.warning("Maqola rasmlari yuborilmadi: %s", e)
+
+
+def _chat_html(chat) -> str:
+    """Guruh/kanal: 'Nomi' (username bo'lsa havola) @username [ID: -100...]."""
+    name = getattr(chat, "title", None) or " ".join(
+        p for p in [getattr(chat, "first_name", None), getattr(chat, "last_name", None)] if p
+    )
+    username = getattr(chat, "username", None)
+    out = user_link_html(name or None, username, None)
+    if username:
+        out += f" @{html.escape(username)}"
+    return out + f" [ID: {chat.id}]"
+
+
+def _post_link(chat, message_id: Optional[int]) -> Optional[str]:
+    """Kanal/guruhdagi asl postga havola (ochiq yoki yopiq kanal)."""
+    if not chat or not message_id:
+        return None
+    if getattr(chat, "username", None):
+        return f"https://t.me/{chat.username}/{message_id}"
+    cid = str(chat.id)
+    if cid.startswith("-100"):
+        return f"https://t.me/c/{cid[4:]}/{message_id}"
+    return None
+
+
+def _origin_lines(origin) -> list[str]:
+    """MessageOrigin (user / hidden_user / chat / channel) — asl manba haqida hamma ma'lumot."""
+    lines = []
+    otype = getattr(origin, "type", None)
+    if otype == "user":
+        u = origin.sender_user
+        name = " ".join(p for p in [u.first_name or "", u.last_name or ""] if p) or None
+        bot_mark = " 🤖 (bot)" if u.is_bot else ""
+        lines.append(f"👤 Asl yuboruvchi: {full_user_html(name, u.username, u.id)}{bot_mark}")
+    elif otype == "hidden_user":
+        lines.append(
+            f"👤 Asl yuboruvchi: {html.escape(origin.sender_user_name or '?')} (profili yashirin)"
+        )
+    elif otype == "chat":
+        lines.append(f"👥 Guruhdan (anonim admin): {_chat_html(origin.sender_chat)}")
+    elif otype == "channel":
+        lines.append(f"📢 Kanaldan: {_chat_html(origin.chat)}")
+        link = _post_link(origin.chat, origin.message_id)
+        if link:
+            lines.append(f'🔗 <a href="{html.escape(link)}">Asl postni ochish</a> (ID: {origin.message_id})')
+        else:
+            lines.append(f"🆔 Asl post ID: {origin.message_id}")
+    sig = getattr(origin, "author_signature", None)
+    if sig:
+        lines.append(f"✍️ Imzo: {html.escape(sig)}")
+    if getattr(origin, "date", None):
+        lines.append(f"🕐 Asl vaqti: {origin.date.strftime('%Y-%m-%d %H:%M:%S')} (UTC+0)")
+    return lines
+
+
+def _forward_lines(msg: Message) -> list[str]:
+    """
+    Xabar qayerdan kelgani: forward manbasi, bot orqali, boshqa chatdagi xabarga
+    javob, iqtibos. Telegram bergan hamma ma'lumot chiqariladi.
+    """
+    lines = []
+    if msg.forward_origin:
+        lines.append("🔁 Forward qilingan xabar:")
+        lines += [f"   {line}" for line in _origin_lines(msg.forward_origin)]
+    if getattr(msg, "is_automatic_forward", None):
+        lines.append("📢 Kanaldan guruhga avtomatik uzatilgan")
+    if msg.via_bot:
+        vb = msg.via_bot
+        lines.append(f"🤖 Bot orqali yuborilgan: {full_user_html(vb.first_name, vb.username, vb.id)}")
+    ext = getattr(msg, "external_reply", None)
+    if ext:
+        lines.append("↪️ Boshqa chatdagi xabarga javob:")
+        if ext.chat:
+            lines.append(f"   💬 Chat: {_chat_html(ext.chat)}")
+            link = _post_link(ext.chat, ext.message_id)
+            if link:
+                lines.append(f'   🔗 <a href="{html.escape(link)}">Xabarni ochish</a>')
+        lines += [f"   {line}" for line in _origin_lines(ext.origin)]
+    quote = getattr(msg, "quote", None)
+    if quote and quote.text:
+        lines.append(f"❝ Iqtibos: {html.escape(quote.text)}")
+    return lines
+
+
 def _build_channel_header(
     message: Message,
     direction: str,
@@ -972,6 +1207,9 @@ def _build_channel_header(
         else:
             lines.append("⤴️ Javob berilgan: (oldingi xabarga)")
 
+    # Forward / bot orqali / boshqa chatga javob / iqtibos
+    lines += _forward_lines(message)
+
     # Xabar turi
     lines.append(f"📎 Turi: {content_type}")
 
@@ -1006,27 +1244,72 @@ async def _send_to_channel(
     # --- Reply (javob berilgan) xabar bloki: asl xabar + unga yozilgan javob ---
     if message.reply_to_message:
         answer_text = message.text or getattr(message, "caption", None)
+        answer_entities = message.entities if message.text else message.caption_entities
         try:
             await _send_reply_media(
-                bot, message.reply_to_message, channel_id, answer_text=answer_text
+                bot,
+                message.reply_to_message,
+                channel_id,
+                answer_text=answer_text,
+                answer_entities=answer_entities,
             )
+        except TelegramRetryAfter:
+            raise
         except Exception as e:
             logger.warning("Could not send reply media to channel: %s", e)
 
-    # --- TEXT ---
+    # --- TEXT --- (asl formatlash saqlanadi, uzun bo'lsa bo'lib yuboriladi)
     if content_type == "text" and message.text:
-        full_text = f"{header}\n\n{html.escape(message.text)}"
-        if len(full_text) > 4096:
-            full_text = full_text[:4093] + "..."
-        await bot.send_message(chat_id=channel_id, text=full_text)
+        await _send_long(bot, channel_id, header, message.text, message.entities)
         return
 
-    # Caption bilan sarlavhani birlashtirish (media turlar uchun)
-    original_caption = html.escape(getattr(message, "caption", None) or "")
-    caption = f"{header}\n\n{original_caption}".strip() if original_caption else header
-    if len(caption) > 1024:
-        caption = caption[:1021] + "..."
+    # --- SO'ROVNOMA / STORY / SOVG'A / PIN / MAQOLA / ... --- to'liq tavsif bilan
+    special = None
+    try:
+        special = special_content(message, content_type)
+    except Exception:
+        logger.warning("special_content xato (msg_id=%s)", message.message_id, exc_info=True)
+    if special:
+        sp_text, sp_ents, sp_photos = special
+        await _send_long(bot, channel_id, header, sp_text or f"[{content_type}]", sp_ents)
+        await _send_photos(bot, channel_id, sp_photos)
+        return
 
+    # Caption bilan sarlavhani birlashtirish (media turlar uchun).
+    # Sig'masa: media faqat sarlavha bilan, caption matni keyin alohida xabar(lar)da.
+    original_caption = getattr(message, "caption", None) or ""
+    caption_html = html_decoration.unparse(original_caption, _ents(message.caption_entities))
+    has_caption = content_type in ("photo", "video", "audio", "document")
+    caption, overflow = header, bool(original_caption)
+    if (
+        has_caption
+        and original_caption
+        and _visible_len(header) + 2 + _u16(original_caption) <= _CAPTION_LIMIT
+    ):
+        caption, overflow = f"{header}\n\n{caption_html}", False
+    if has_caption and _visible_len(caption) > _CAPTION_LIMIT:
+        # Sarlavhaning o'zi sig'madi — uni matn qilib oldinroq yuboramiz
+        await _send_html(bot, channel_id, header)
+        caption = ""
+
+    await _send_channel_media(bot, message, channel_id, content_type, header, caption)
+
+    if overflow:
+        await _send_long(
+            bot, channel_id, "✍️ Xabar matni (to'liq):",
+            original_caption, message.caption_entities,
+        )
+
+
+async def _send_channel_media(
+    bot: Bot,
+    message: Message,
+    channel_id: int,
+    content_type: str,
+    header: str,
+    caption: str,
+) -> None:
+    """Xabarning mediasini kanalga yuboradi (turiga qarab). caption — tayyor HTML."""
     # --- PHOTO ---
     if content_type == "photo" and message.photo:
         largest = message.photo[-1]
