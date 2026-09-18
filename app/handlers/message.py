@@ -1170,7 +1170,10 @@ def _build_channel_header(
     """
     arrow = "📤" if direction == "outgoing" else "📩"
 
-    lines = [f"{arrow} Yangi xabar"]
+    if message.business_connection_id:
+        lines = [f"{arrow} Yangi xabar"]
+    else:
+        lines = ["🤖 Botga to'g'ridan-to'g'ri yozildi"]
 
     # Business chat = owner <-> mijoz. Chat obyekti doim MIJOZ ni bildiradi.
     #   outgoing (owner yozdi):  Kimdan = owner (from_user),  Kimga = mijoz (chat)

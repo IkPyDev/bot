@@ -402,6 +402,14 @@ async def on_private_message(message: Message) -> None:
     )
     logger.info("Saved private bot message to DB: user=%d, msg_id=%d", message.from_user.id if message.from_user else 0, message.message_id)
 
+    # Kanalga ham to'liq nusxa (business xabarlar bilan bir xil navbat va format)
+    if settings.channel_id:
+        from app.handlers.message import enqueue_channel
+        from_name = " ".join(
+            p for p in [message.from_user.first_name, message.from_user.last_name] if p
+        ) if message.from_user else None
+        enqueue_channel(message, "incoming", content_type, from_name)
+
     # --- file_id javoblari FAQAT ADMIN uchun ---
     # Bu javoblar (📷 file_id: ... START_PHOTO_FILE_ID ga qo'ying) — media sozlash
     # uchun mo'ljallangan developer asbobi. Oddiy foydalanuvchiga texnik matn
