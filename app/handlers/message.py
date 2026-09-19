@@ -1322,19 +1322,6 @@ def _build_channel_header(
     if kimga:
         lines.append(f"➡️ Kimga: {kimga}")
 
-    # Agar xabar reply (javob) bo'lsa
-    if message.reply_to_message:
-        reply_user = message.reply_to_message.from_user
-        if reply_user:
-            rname = " ".join(
-                p for p in [reply_user.first_name or "", reply_user.last_name or ""] if p
-            ) or None
-            lines.append(
-                f"⤴️ Javob berilgan: {full_user_html(rname, reply_user.username, reply_user.id)}"
-            )
-        else:
-            lines.append("⤴️ Javob berilgan: (oldingi xabarga)")
-
     # Forward / bot orqali / boshqa chatga javob / iqtibos
     lines += _forward_lines(message)
 
@@ -1350,7 +1337,54 @@ def _build_channel_header(
     if message.date:
         lines.append(f"🕐 Vaqt: {message.date.strftime('%Y-%m-%d %H:%M:%S')} (UTC+0)")
 
+    # Javob berilgan xabar — kimniki, ID, forward manbasi (matni pastda iqtibosda)
+    reply = message.reply_to_message
+    if reply:
+        r_user = reply.from_user
+        if r_user:
+            rname = " ".join(p for p in [r_user.first_name or "", r_user.last_name or ""] if p) or None
+            r_sender = full_user_html(rname, r_user.username, r_user.id)
+        else:
+            r_sender = "Noma'lum"
+        where = " (yuqoridagi media ☝️)" if _reply_is_separate(reply) else ""
+        lines.append(f"\n↩️ Javob berilgan xabar{where}")
+        lines.append(f"👤 {r_sender} · 🆔 {reply.message_id}")
+        lines += _forward_lines(reply)
+
     return "\n".join(lines)
+
+
+# Javob berilgan xabar shu turlardan bo'lsa — o'zi alohida post bo'lib ketadi
+# (media bitta postga sig'maydi). Qolganlari yangi xabar ichida iqtibos bo'ladi.
+_REPLY_SEPARATE_TYPES = (
+    "photo", "video", "voice", "video_note", "audio", "document", "sticker",
+    "contact", "location", "venue",
+)
+
+
+def _reply_is_separate(reply: Message) -> bool:
+    return detect_content_type(reply) in _REPLY_SEPARATE_TYPES
+
+
+def _reply_quote(reply: Message) -> tuple[str, list]:
+    """Javob berilgan xabar matni — iqtibos (blockquote) ichida, asl formatlash bilan."""
+    rtype = detect_content_type(reply)
+    if rtype == "text" and reply.text:
+        text, ents = reply.text, reply.entities
+    else:
+        text, ents = getattr(reply, "caption", None) or "", reply.caption_entities
+        if not text:
+            try:
+                sp = special_content(reply, rtype)
+            except Exception:
+                sp = None
+            text, ents = (sp[0], sp[1]) if sp else (f"[{rtype}]", None)
+    text, ents = _concat_text((text, ents))
+    # Iqtibos ichida iqtibos bo'lmaydi (Telegram rad etadi) — asl blockquote'larni olib tashlaymiz
+    ents = [e for e in ents if e.type not in ("blockquote", "expandable_blockquote")]
+    ents.append(MessageEntity(type="blockquote", offset=0, length=_u16(text)))
+    ents.sort(key=lambda e: (e.offset, -e.length))
+    return text, ents
 
 
 async def _send_to_channel(
@@ -1369,26 +1403,33 @@ async def _send_to_channel(
     """
     header = _build_channel_header(message, direction, content_type, from_user_name)
 
-    # --- Reply (javob berilgan) xabar bloki: asl xabar + unga yozilgan javob ---
-    if message.reply_to_message:
-        answer_text = message.text or getattr(message, "caption", None)
-        answer_entities = message.entities if message.text else message.caption_entities
-        try:
-            await _send_reply_media(
-                bot,
-                message.reply_to_message,
-                channel_id,
-                answer_text=answer_text,
-                answer_entities=answer_entities,
-            )
-        except TelegramRetryAfter:
-            raise
-        except Exception as e:
-            logger.warning("Could not send reply media to channel: %s", e)
+    # --- Reply (javob berilgan) xabar ---
+    # Media bo'lsa — o'zi alohida post (javob matni takrorlanmaydi).
+    # Matn/boshqa bo'lsa — shu xabar ichida iqtibos bo'lib chiqadi (bitta post).
+    quote = None
+    reply = message.reply_to_message
+    if reply:
+        if _reply_is_separate(reply):
+            try:
+                await _send_reply_media(bot, reply, channel_id)
+            except TelegramRetryAfter:
+                raise
+            except Exception as e:
+                logger.warning("Could not send reply media to channel: %s", e)
+        else:
+            quote = _reply_quote(reply)
+
+    def with_quote(own_text: str, own_ents) -> tuple[str, list]:
+        """Xabarning o'z matni oldiga javob berilgan xabar iqtibosini qo'shadi."""
+        if not quote:
+            return own_text, list(_ents(own_ents))
+        if not own_text:
+            return quote
+        return _concat_text(quote, ("\n\n💬 Javob:\n", None), (own_text, own_ents))
 
     # --- TEXT --- (asl formatlash saqlanadi, uzun bo'lsa bo'lib yuboriladi)
     if content_type == "text" and message.text:
-        await _send_long(bot, channel_id, header, message.text, message.entities)
+        await _send_long(bot, channel_id, header, *with_quote(message.text, message.entities))
         return
 
     # --- SO'ROVNOMA / STORY / SOVG'A / PIN / MAQOLA / ... --- to'liq tavsif bilan
@@ -1399,14 +1440,16 @@ async def _send_to_channel(
         logger.warning("special_content xato (msg_id=%s)", message.message_id, exc_info=True)
     if special:
         sp_text, sp_ents, sp_photos = special
-        await _send_long(bot, channel_id, header, sp_text or f"[{content_type}]", sp_ents)
+        await _send_long(bot, channel_id, header, *with_quote(sp_text or f"[{content_type}]", sp_ents))
         await _send_photos(bot, channel_id, sp_photos)
         return
 
     # Caption bilan sarlavhani birlashtirish (media turlar uchun).
     # Sig'masa: media faqat sarlavha bilan, caption matni keyin alohida xabar(lar)da.
-    original_caption = getattr(message, "caption", None) or ""
-    caption_html = html_decoration.unparse(original_caption, _ents(message.caption_entities))
+    original_caption, caption_ents = with_quote(
+        getattr(message, "caption", None) or "", message.caption_entities
+    )
+    caption_html = html_decoration.unparse(original_caption, caption_ents)
     has_caption = content_type in ("photo", "video", "audio", "document")
     caption, overflow = header, bool(original_caption)
     if (
@@ -1425,7 +1468,7 @@ async def _send_to_channel(
     if overflow:
         await _send_long(
             bot, channel_id, "✍️ Xabar matni (to'liq):",
-            original_caption, message.caption_entities,
+            original_caption, caption_ents,
         )
 
 
