@@ -87,7 +87,7 @@ async def on_bot_channel_status(event: ChatMemberUpdated, bot: Bot) -> None:
         await _notify_admins(
             bot,
             f"✅ Yangi kanal qo'shildi: {label}\n\n"
-            f"Endi xabar nusxalari shu kanalga ham boradi.\n"
+            f"Zaxira kanal: asosiy kanal limitga tushganda xabarlar shu yerga boradi.\n"
             f"📡 Ishlayotgan kanallar: {len(mh._channel_workers)} ta — /kanallar",
         )
     else:
@@ -128,7 +128,8 @@ async def _channels_view(bot: Bot) -> tuple[str, InlineKeyboardMarkup]:
     items += [dict(r, main=False) for r in rows_db]
 
     lines = [f"📡 <b>Kanallar</b> — ishlayapti: {len(mh._channel_workers)} ta"]
-    lines.append(f"📥 Navbatda kutayotgan: {mh.channel_queue_size()} ta\n")
+    lines.append(f"📥 Navbatda kutayotgan: {mh.channel_queue_size()} ta")
+    lines.append("ℹ️ Hamma xabar ⭐ asosiy kanalga boradi. Asosiy limitga tushsa — zaxira kanallarga.\n")
     kb = []
     for i, it in enumerate(items, 1):
         cid = it["chat_id"]
@@ -137,8 +138,10 @@ async def _channels_view(bot: Bot) -> tuple[str, InlineKeyboardMarkup]:
         flood_left = int(st.get("flood_until", 0) - loop.time())
         if working and flood_left > 0:
             status = f"⏸ flood, {flood_left}s dam olyapti"
+        elif working and it["main"]:
+            status = "✅ ishlayapti (hamma xabar shu yerga)"
         elif working:
-            status = "✅ ishlayapti"
+            status = "💤 zaxira, tayyor"
         elif st.get("error"):
             status = f"⚠️ xato: {html.escape(st['error'][:80])}"
         else:

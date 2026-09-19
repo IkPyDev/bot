@@ -194,9 +194,9 @@ _CHANNEL_PACING_SEC = 0.05  # ketma-ket yuborishlar orasida yumshoq pauza
 _JOB_MAX_ATTEMPTS = 10      # flood/tarmoq xatosida job necha marta qayta navbatga qo'yiladi
 _channel_queue: Optional[asyncio.Queue] = None
 
-# Kanal hovuzi: har bir kanalga bitta worker. Hammasi BITTA umumiy navbatdan oladi —
-# qaysi kanal bo'sh bo'lsa, o'sha yuboradi. Flood'ga tushgan kanal kutib turadi,
-# uning job'i navbatga qaytadi va boshqa kanal orqali ketadi.
+# Kanal hovuzi: har bir kanalga bitta worker, hammasi BITTA umumiy navbatdan oladi.
+# Oddiy vaqtda hamma xabar ASOSIY kanalga boradi. Asosiy kanal flood'ga tushsa
+# (yoki ishlamay qolsa) — qo'shimcha kanallar navbatni olib ketadi.
 _channel_workers: dict[int, asyncio.Task] = {}
 # chat_id -> {"title", "main", "sent", "flood_until", "error"}
 channel_state: dict[int, dict] = {}
@@ -310,13 +310,37 @@ def _is_channel_lost(e: Exception) -> bool:
     )
 
 
+def _main_available() -> bool:
+    """Asosiy kanal ishlayaptimi va flood'da emasmi."""
+    main_id = next((cid for cid, s in channel_state.items() if s["main"]), None)
+    if main_id is None or main_id not in _channel_workers:
+        return False
+    return asyncio.get_running_loop().time() >= channel_state[main_id]["flood_until"]
+
+
 async def _channel_worker(bot: Bot, channel_id: int) -> None:
-    """Umumiy navbatdan job olib, O'Z kanaliga yuboradi. Flood bo'lsa job boshqa kanalga ketadi."""
+    """
+    Umumiy navbatdan job olib, O'Z kanaliga yuboradi.
+
+    Asosiy kanal — hamma xabarni oladi. Qo'shimcha kanallar FAQAT asosiy kanal
+    flood'da yoki ishlamay qolganda navbatdan oladi (zaxira sifatida).
+    """
     assert _channel_queue is not None
     loop = asyncio.get_running_loop()
     st = channel_state[channel_id]
     while True:
-        job = await _channel_queue.get()
+        if st["main"]:
+            job = await _channel_queue.get()
+        else:
+            # Zaxira kanal: asosiy ishlayotgan bo'lsa — kutadi, navbatga tegmaydi
+            if _main_available():
+                await asyncio.sleep(0.5)
+                continue
+            try:
+                job = _channel_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                await asyncio.sleep(0.2)
+                continue
         try:
             try:
                 await _run_channel_job(bot, channel_id, job)
