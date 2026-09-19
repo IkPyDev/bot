@@ -4,6 +4,7 @@ from aiogram import Router
 
 from app.handlers.admin import router as admin_router
 from app.handlers.backup import router as backup_router
+from app.handlers.channels import router as channels_router
 from app.handlers.connection import router as connection_router
 from app.handlers.deleted import router as deleted_router
 from app.handlers.edited import router as edited_router
@@ -29,6 +30,9 @@ def get_main_router() -> Router:
 
     # Admin: baza nusxasi / tiklash / loglar / JSON (faqat ADMIN_IDS)
     main_router.include_router(backup_router)
+
+    # Kanal hovuzi: bot kanalga admin qilinganda o'zi qo'shadi, /kanallar
+    main_router.include_router(channels_router)
 
     # /start komandasi
     main_router.include_router(start_router)

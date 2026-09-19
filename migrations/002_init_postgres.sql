@@ -74,3 +74,15 @@ CREATE TABLE IF NOT EXISTS bot_users (
     language_code   TEXT,
     created_at      TIMESTAMPTZ DEFAULT now()
 );
+
+-- Qo'shimcha kanallar (xabar nusxalari uchun). Bot admin qilib qo'shilganda o'zi yoziladi.
+-- Asosiy kanal (.env CHANNEL_ID) bu yerda emas — u doim ishlaydi.
+CREATE TABLE IF NOT EXISTS channels (
+    chat_id         BIGINT PRIMARY KEY,
+    title           TEXT,
+    username        TEXT,
+    is_active       BOOLEAN DEFAULT TRUE,
+    added_by        BIGINT,
+    added_at        TIMESTAMPTZ DEFAULT now(),
+    updated_at      TIMESTAMPTZ DEFAULT now()
+);

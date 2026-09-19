@@ -85,7 +85,8 @@ async def on_admin_help(message: Message) -> None:
         "📄 /logs — bugungi log (yoki <code>/logs 17.09.2026</code>)\n"
         "🧾 /json — bugun Telegram'dan kelgan hamma narsa, to'liq JSON "
         "(yoki <code>/json 17.09.2026</code>)\n"
-        "📅 /loglar — kalendar: oyma-oy varaqlab, kunni bosib log yoki JSON olish\n\n"
+        "📅 /loglar — kalendar: oyma-oy varaqlab, kunni bosib log yoki JSON olish\n"
+        "📡 /kanallar — xabar nusxalari boradigan kanallar (qo'shish/o'chirish)\n\n"
         "<blockquote>Har kuni 00:30 da log, baza nusxasi va JSON "
         "backup kanaliga o'zi ham yuboriladi.</blockquote>"
     )

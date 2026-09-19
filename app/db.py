@@ -93,6 +93,51 @@ class Database:
             self._pool = None
             logger.info("PostgreSQL pool closed")
 
+    # ===================================================================
+    # CHANNELS — qo'shimcha kanallar (xabar nusxalari taqsimlanadi)
+    # ===================================================================
+
+    async def upsert_channel(
+        self, chat_id: int, title: Optional[str], username: Optional[str],
+        is_active: bool, added_by: Optional[int],
+    ) -> None:
+        try:
+            await self._pool.execute(
+                """
+                INSERT INTO channels (chat_id, title, username, is_active, added_by)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (chat_id) DO UPDATE SET
+                    title      = COALESCE(EXCLUDED.title, channels.title),
+                    username   = EXCLUDED.username,
+                    is_active  = EXCLUDED.is_active,
+                    added_by   = COALESCE(EXCLUDED.added_by, channels.added_by),
+                    updated_at = now()
+                """,
+                chat_id, title, username, is_active, added_by,
+            )
+        except Exception:
+            logger.error("Failed to upsert channel %s", chat_id, exc_info=True)
+
+    async def set_channel_active(self, chat_id: int, is_active: bool) -> None:
+        try:
+            await self._pool.execute(
+                "UPDATE channels SET is_active = $2, updated_at = now() WHERE chat_id = $1",
+                chat_id, is_active,
+            )
+        except Exception:
+            logger.error("Failed to update channel %s", chat_id, exc_info=True)
+
+    async def get_channels(self) -> list[dict[str, Any]]:
+        """Hamma qo'shimcha kanallar (faol va o'chirilgan), qo'shilgan tartibda."""
+        try:
+            rows = await self._pool.fetch(
+                "SELECT chat_id, title, username, is_active FROM channels ORDER BY added_at"
+            )
+            return [dict(r) for r in rows]
+        except Exception:
+            logger.error("Failed to load channels", exc_info=True)
+            return []
+
     async def reset_pool(self) -> None:
         """Bazani tiklagandan keyin: eski ulanishlar (eski jadval keshlari) yangilanadi."""
         if self._pool:

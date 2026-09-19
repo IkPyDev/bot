@@ -22,7 +22,13 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from aiogram import Bot, Router
-from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
+from aiogram.exceptions import (
+    TelegramBadRequest,
+    TelegramForbiddenError,
+    TelegramNetworkError,
+    TelegramNotFound,
+    TelegramRetryAfter,
+)
 from aiogram.types import BufferedInputFile, InputMediaPhoto, Message, MessageEntity
 from aiogram.utils.text_decorations import html_decoration
 
@@ -183,10 +189,17 @@ def format_chat_label(chat) -> str:
 # Navbat to'lsa — yangi xabar TASHLAB yuboriladi (bot to'xtamaydi, RAM o'smaydi).
 # ============================================================
 
-_CHANNEL_QUEUE_MAXSIZE = 1000
+_CHANNEL_QUEUE_MAXSIZE = 5000
 _CHANNEL_PACING_SEC = 0.05  # ketma-ket yuborishlar orasida yumshoq pauza
+_JOB_MAX_ATTEMPTS = 10      # flood/tarmoq xatosida job necha marta qayta navbatga qo'yiladi
 _channel_queue: Optional[asyncio.Queue] = None
-_channel_worker_task: Optional[asyncio.Task] = None
+
+# Kanal hovuzi: har bir kanalga bitta worker. Hammasi BITTA umumiy navbatdan oladi —
+# qaysi kanal bo'sh bo'lsa, o'sha yuboradi. Flood'ga tushgan kanal kutib turadi,
+# uning job'i navbatga qaytadi va boshqa kanal orqali ketadi.
+_channel_workers: dict[int, asyncio.Task] = {}
+# chat_id -> {"title", "main", "sent", "flood_until", "error"}
+channel_state: dict[int, dict] = {}
 
 
 def _enqueue_channel_job(job: dict) -> None:
@@ -276,27 +289,69 @@ async def _run_channel_job(bot: Bot, channel_id: int, job: dict) -> None:
         )
 
 
+def _requeue(job: dict, reason: str) -> None:
+    """Job'ni qayta navbatga qo'yadi (boshqa kanal oladi). Ko'p urinishdan keyin — tashlaydi."""
+    job["attempts"] = job.get("attempts", 0) + 1
+    if job["attempts"] > _JOB_MAX_ATTEMPTS:
+        logger.error("Channel job %d urinishdan keyin tashlandi (kind=%s, %s)",
+                     _JOB_MAX_ATTEMPTS, job.get("kind"), reason)
+        return
+    _enqueue_channel_job(job)
+
+
+def _is_channel_lost(e: Exception) -> bool:
+    """Bot kanaldan chiqarilgan / yozish huquqi yo'q / kanal o'chirilgan."""
+    if isinstance(e, TelegramForbiddenError):
+        return True
+    msg = str(e).lower()
+    return isinstance(e, (TelegramBadRequest, TelegramNotFound)) and any(
+        s in msg for s in ("chat not found", "not enough rights", "have no rights",
+                           "chat_write_forbidden", "need administrator rights")
+    )
+
+
 async def _channel_worker(bot: Bot, channel_id: int) -> None:
-    """Navbatdan job olib, kanalga ketma-ket yuboradi (429 ni hurmat qiladi)."""
+    """Umumiy navbatdan job olib, O'Z kanaliga yuboradi. Flood bo'lsa job boshqa kanalga ketadi."""
     assert _channel_queue is not None
+    loop = asyncio.get_running_loop()
+    st = channel_state[channel_id]
     while True:
         job = await _channel_queue.get()
         try:
             try:
                 await _run_channel_job(bot, channel_id, job)
+                st["sent"] += 1
+                st["error"] = None
             except TelegramRetryAfter as e:
-                # Flood limit — Telegram aytgancha kutamiz va bir marta qayta urinamiz
-                logger.warning("Channel flood limit: %ss kutilmoqda", e.retry_after)
-                await asyncio.sleep(e.retry_after)
-                try:
-                    await _run_channel_job(bot, channel_id, job)
-                except Exception:
-                    logger.error(
-                        "Channel job retry ham muvaffaqiyatsiz (kind=%s)",
-                        job.get("kind"),
-                        exc_info=True,
-                    )
-            except Exception:
+                st["flood_until"] = loop.time() + e.retry_after
+                if len(_channel_workers) > 1:
+                    # Boshqa kanallar bor — job ularga, bu kanal esa dam oladi
+                    logger.warning("Kanal %s flood: %ss — xabar boshqa kanalga", channel_id, e.retry_after)
+                    _requeue(job, "flood")
+                    await asyncio.sleep(e.retry_after)
+                else:
+                    # Yagona kanal — kutib, shu job'ni qayta yuboramiz (tartib buzilmasin)
+                    logger.warning("Channel flood limit: %ss kutilmoqda", e.retry_after)
+                    await asyncio.sleep(e.retry_after)
+                    try:
+                        await _run_channel_job(bot, channel_id, job)
+                        st["sent"] += 1
+                    except Exception:
+                        _requeue(job, "flood")
+            except TelegramNetworkError as e:
+                logger.warning("Kanal %s tarmoq xatosi: %s — qayta navbatga", channel_id, e)
+                _requeue(job, "network")
+                await asyncio.sleep(2)
+            except Exception as e:
+                if _is_channel_lost(e):
+                    # Kanal ishlamaydi — job boshqa kanalga, bu worker to'xtaydi
+                    logger.error("Kanal %s ishlamayapti (%s) — hovuzdan chiqarildi", channel_id, e)
+                    st["error"] = str(e)[:200]
+                    _requeue(job, "channel lost")
+                    _channel_workers.pop(channel_id, None)
+                    if not st["main"]:
+                        await db.set_channel_active(channel_id, False)
+                    return
                 logger.error(
                     "Channelga yuborishda xato (kind=%s)", job.get("kind"), exc_info=True
                 )
@@ -449,26 +504,72 @@ async def send_owner_media(
         )
 
 
+def add_channel_worker(bot: Bot, channel_id: int, title: Optional[str] = None, main: bool = False) -> bool:
+    """Kanalni hovuzga qo'shadi (worker ishga tushadi). Allaqachon bo'lsa — False."""
+    if _channel_queue is None or channel_id in _channel_workers:
+        return False
+    st = channel_state.setdefault(
+        channel_id, {"title": title, "main": main, "sent": 0, "flood_until": 0.0, "error": None}
+    )
+    st["title"] = title or st["title"]
+    st["error"] = None
+    _channel_workers[channel_id] = asyncio.create_task(_channel_worker(bot, channel_id))
+    logger.info("Kanal hovuzga qo'shildi: %s (%s) — jami %d", channel_id, title, len(_channel_workers))
+    return True
+
+
+async def remove_channel_worker(channel_id: int) -> bool:
+    """Kanalni hovuzdan chiqaradi (worker to'xtaydi). Asosiy kanal chiqarilmaydi."""
+    task = _channel_workers.get(channel_id)
+    if task is None or channel_state.get(channel_id, {}).get("main"):
+        return False
+    _channel_workers.pop(channel_id, None)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    logger.info("Kanal hovuzdan chiqarildi: %s — qoldi %d", channel_id, len(_channel_workers))
+    return True
+
+
+def is_channel_working(channel_id: int) -> bool:
+    return channel_id in _channel_workers
+
+
+def channel_queue_size() -> int:
+    return _channel_queue.qsize() if _channel_queue else 0
+
+
+async def _load_extra_channels(bot: Bot) -> None:
+    """Bazadagi faol qo'shimcha kanallarni hovuzga qo'shadi (startup)."""
+    for ch in await db.get_channels():
+        if ch["is_active"]:
+            add_channel_worker(bot, ch["chat_id"], ch["title"])
+
+
 def start_channel_worker(bot: Bot, channel_id: int) -> None:
-    """on_startup da chaqiriladi — navbat va workerni ishga tushiradi."""
-    global _channel_queue, _channel_worker_task
-    if _channel_worker_task is not None:
+    """on_startup da chaqiriladi — navbat, asosiy kanal va qo'shimcha kanallar."""
+    global _channel_queue
+    if _channel_queue is not None:
         return
     _channel_queue = asyncio.Queue(maxsize=_CHANNEL_QUEUE_MAXSIZE)
-    _channel_worker_task = asyncio.create_task(_channel_worker(bot, channel_id))
+    add_channel_worker(bot, channel_id, main=True)
+    asyncio.create_task(_load_extra_channels(bot))
     logger.info("Channel forward worker ishga tushdi (maxsize=%d)", _CHANNEL_QUEUE_MAXSIZE)
 
 
 async def stop_channel_worker() -> None:
-    """on_shutdown da chaqiriladi — workerni to'xtatadi."""
-    global _channel_worker_task
-    if _channel_worker_task is not None:
-        _channel_worker_task.cancel()
+    """on_shutdown da chaqiriladi — hamma workerlarni to'xtatadi."""
+    tasks = list(_channel_workers.values())
+    _channel_workers.clear()
+    for task in tasks:
+        task.cancel()
+    for task in tasks:
         try:
-            await _channel_worker_task
+            await task
         except asyncio.CancelledError:
             pass
-        _channel_worker_task = None
 
 
 async def _resolve_owner_id(
